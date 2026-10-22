@@ -34,8 +34,14 @@ void main() {
  vec3 color=mix(night,day,light);
  float dusk=exp(-pow((hour-18.0)/0.9,2.0))+exp(-pow((hour-6.0)/0.9,2.0));
  color+=vec3(0.30,0.09,0.02)*dusk*exp(-height*8.0);
- vec2 skyUV=vec2(atan(d.x,d.z),asin(d.y));
- vec2 cells=skyUV*180.0;
+ // Rotate the sampling direction, keeping the star pattern rigid as time advances.
+ // Sine/cosine make the 24:00 -> 00:00 wrap continuous.
+ float siderealAngle=hour/24.0*6.28318530718;
+ vec3 axis=normalize(vec3(0.15,1.0,0.25));
+ vec3 starDir=d*cos(siderealAngle)+cross(axis,d)*sin(siderealAngle)
+   +axis*dot(axis,d)*(1.0-cos(siderealAngle));
+ vec2 starUV=vec2(atan(starDir.x,starDir.z),asin(clamp(starDir.y,-1.0,1.0)));
+ vec2 cells=starUV*180.0;
  float star=step(0.988,hash(floor(cells)))*(1.0-smoothstep(0.02,0.10,length(fract(cells)-0.5)));
  color+=vec3(star)*(1.0-light)*(1.0-rain)*smoothstep(0.02,0.16,height);
  float sunPhase=(hour-6.0)/12.0*3.14159;
@@ -43,9 +49,15 @@ void main() {
  float sunDist=length(d-sunDir);
  float sunVisible=smoothstep(5.8,6.3,hour)*(1.0-smoothstep(17.7,18.2,hour));
  color+=vec3(1.0,0.72,0.30)*(exp(-sunDist*18.0)*0.35+1.0-smoothstep(0.022,0.027,sunDist))*sunVisible*(1.0-rain);
- vec3 moonDir=normalize(vec3(-0.45,0.16,0.85));
+ // Mirror the stylised daytime arc, shifted twelve hours into the night.
+ float moonPhase=mod(hour+6.0,24.0)/12.0*3.14159265359;
+ vec3 moonDir=normalize(vec3(-0.55+0.65*cos(moonPhase),0.04+0.12*sin(moonPhase),0.85));
  float moon=1.0-smoothstep(0.026,0.030,length(d-moonDir));
- float crater=0.85+0.15*noise(skyUV*180.0);
+ // Moon-local coordinates keep the crater pattern attached to the moving disc.
+ vec3 moonRight=normalize(cross(vec3(0.0,1.0,0.0),moonDir));
+ vec3 moonUp=cross(moonDir,moonRight);
+ vec2 moonUV=vec2(dot(d-moonDir,moonRight),dot(d-moonDir,moonUp));
+ float crater=0.85+0.15*noise(moonUV*180.0);
  color=mix(color,vec3(0.87,0.91,0.96)*crater,moon*(1.0-light)*(1.0-rain));
  vec2 cloudUV=d.xz/max(d.y+0.22,0.12)*2.0+vec2(clock*0.008,0);
  float cloudNoise=noise(cloudUV)*0.65+noise(cloudUV*2.1)*0.35;

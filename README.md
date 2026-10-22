@@ -216,7 +216,7 @@ Four stylised acacia trees share their positions and canopy radii between visual
 
 ### Sky and backdrop — implemented
 
-A procedural sky dome blends daylight, warm dawn/dusk horizons and night colours. It includes a stylised sun, drifting clouds, deterministic stars and a textured-looking procedural moon. Rain thickens and darkens cloud cover and obscures celestial features. This is artistic presentation, not astronomical simulation: the moon position and phase are fixed, and canopy footprints do not move with the sun.
+A procedural sky dome blends daylight, warm dawn/dusk horizons and night colours. It includes a stylised sun, drifting clouds, deterministic stars and a textured-looking procedural moon. Rain thickens and darkens cloud cover and obscures celestial features. This is artistic presentation, not astronomical simulation: the moon follows a stylised nightly arc opposite the sun, with a fixed full-moon appearance; the star field rotates once per simulated day around a tilted axis. Both use simulated time and continue smoothly across midnight. Canopy footprints do not move with the sun. The moon’s crater pattern moves with its disc rather than sliding across it. Chrome checks at 22:14 and 00:50 confirmed changed moon/star positions across midnight with no captured console errors; all 18 existing tests and the production build passed after this update.
 
 The camera remains fixed and input-free, at a lower angle to include the horizon. A surrounding ground plane and low-poly distant hills replace the isolated floating-plane appearance. The sky uses one shader/material and dome mesh; it adds no image assets, libraries or cloud services. Pixel shading still needs measurement on the actual Pi.
 
