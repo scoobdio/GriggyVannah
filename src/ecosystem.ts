@@ -9,7 +9,21 @@ import { worldConfig } from './config';
 
 export function attachEcosystem(scene: Scene, waterMesh: Mesh) {
   const config = { ...simulationConfig, pond: { ...simulationConfig.pond, ...worldConfig.pond } };
+  // Development-only visual scenarios; production always starts from normal defaults.
+  const preview = import.meta.env.DEV ? new URLSearchParams(location.search).get('preview') : null;
+  if (preview === 'night' || preview === 'rain' || preview === 'heat') {
+    config.environment = { ...config.environment, startHour: preview === 'night' ? 22 : 14,
+      clearSeconds: preview === 'rain' ? 0 : 10000,
+      rainSeconds: 10000, transitionSeconds: 0 };
+  }
   const state = createSimulation(config);
+  if (preview === 'heat') { state.animal.heat = 90; state.animal.thirst = 20; }
+  if (preview === 'night' || preview === 'rain' || preview === 'heat') {
+    const notice = document.createElement('div');
+    notice.className = 'preview-notice'; notice.textContent = `Development preview: ${preview}`;
+    document.body.append(notice);
+    scene.onDisposeObservable.add(() => notice.remove());
+  }
   const animal = createHerbivore(scene);
   const stats = createStats(config.pond.capacity);
   const weather = createWeatherView(scene);
@@ -27,7 +41,7 @@ export function attachEcosystem(scene: Scene, waterMesh: Mesh) {
     const dx = state.animal.x - animal.root.position.x;
     const dz = state.animal.z - animal.root.position.z;
     if (Math.hypot(dx, dz) > 1e-6) animal.root.rotation.y = Math.atan2(dx, dz);
-    animal.root.position.set(state.animal.x, 0, state.animal.z);
+    animal.root.position.set(state.animal.x, state.animal.behaviour === 'Cooling in shade' ? -0.25 : 0, state.animal.z);
     animal.head.rotation.x = state.animal.behaviour === 'Drinking' ? 0.5 : 0;
     // Keep the bank fixed: colour/visibility reflects stock, not interaction geometry.
     waterMesh.visibility = state.water > 0 ? 0.35 + 0.65 * state.water / config.pond.capacity : 0;

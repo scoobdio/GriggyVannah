@@ -6,21 +6,22 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { worldConfig } from './config';
 import { createGrassland, createPond } from './world';
+import { createTrees } from './trees';
 import { attachEcosystem } from './ecosystem';
 
 export function createSavannahScene(engine: Engine) {
   const scene = new Scene(engine);
   scene.clearColor = Color4.FromHexString('#e5d5aaff');
 
-  const camera = new FreeCamera('overview', new Vector3(26, 32, -36), scene);
-  camera.setTarget(Vector3.Zero());
+  const camera = new FreeCamera('overview', new Vector3(20, 14, -32), scene);
+  camera.setTarget(new Vector3(0, 5, 2));
   camera.minZ = 0.1;
-  camera.maxZ = 150;
+  camera.maxZ = 300;
   scene.activeCamera = camera;
   // No input attachment: the display requires no controls.
   const fitCamera = () => {
     const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
-    const verticalFov = 0.8;
+    const verticalFov = 0.9;
     // Preserve horizontal coverage on narrow windows as well as vertical coverage.
     camera.fov = aspect < 1
       ? 2 * Math.atan(Math.tan(verticalFov / 2) / aspect)
@@ -35,6 +36,7 @@ export function createSavannahScene(engine: Engine) {
   light.groundColor = Color3.FromHexString('#8a7956');
 
   createGrassland(scene, worldConfig.grassland);
+  createTrees(scene);
   const pond = createPond(scene, worldConfig.pond);
   attachEcosystem(scene, pond.water);
   return scene;

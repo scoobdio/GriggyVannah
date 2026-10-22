@@ -3,9 +3,11 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { CreateLineSystem } from '@babylonjs/core/Meshes/Builders/linesBuilder';
+import { createSky } from './sky';
 import type { Environment } from './environment';
 
 export function createWeatherView(scene: Scene) {
+  const updateSky = createSky(scene);
   const light = scene.getLightByName('daylight') as HemisphericLight;
   const night = Color4.FromHexString('#293b55ff');
   const day = Color4.FromHexString('#e5d5aaff');
@@ -24,6 +26,7 @@ export function createWeatherView(scene: Scene) {
   rainMesh.setEnabled(false);
   return {
     update(e: Environment, time: number) {
+      updateSky(e, time);
       light.intensity = (0.35 + 0.7 * e.daylight) * (1 - 0.25 * e.rain);
       Color4.LerpToRef(night, day, e.daylight, clear);
       Color4.LerpToRef(clear, wet, e.rain * 0.55, scene.clearColor);
