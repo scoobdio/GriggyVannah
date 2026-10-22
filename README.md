@@ -10,7 +10,7 @@ The intended stack is TypeScript, Vite and Babylon.js. Start with a browser appl
 
 The first deliverable is a small autonomous scene: grassland, one watering hole and one placeholder herbivore that repeatedly becomes thirsty, travels to water and drinks while water replenishes. Make this cycle reliable and legible before expanding the ecosystem.
 
-The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. These are ambitions, not current features.
+The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, heat and rain should also influence behaviour: during peak daytime sunshine, animals should seek tree shade and sit or rest there when too hot, unless it is raining. These are ambitions, not current features.
 
 ## Current implementation and evidence
 
@@ -42,7 +42,7 @@ Autonomous milestone verification:
 - `npm test`: all six focused checks passed, covering movement clamping, range/access/request guards, exact consumption, hydration limits, bounded resources, empty/unreachable recovery, repeated cycles and refill capacity.
 - Equal two-minute simulated runs at 30 and 144 render updates per second produced identical state. A one-hour frame gap advanced only 250 ms of simulated time.
 - `npm run build` passed with the existing large-chunk warning (main JavaScript approximately 1.03 MB minified / 244 kB gzip).
-- Chrome on the development Mac completed four cycles without input over approximately two minutes with default configuration. Visual checks showed the animal at the bank waiting for replenishment, then seeking/returning in later cycles, with the overhead thirst label tracking its position. The pond began empty. No console warnings or errors were captured. Safari displayed the DOM but did not provide a rendered frame during this session; the current milestone is not verified in Safari.
+- Chrome on the development Mac completed four cycles without input over approximately two minutes with default configuration. Visual checks showed the animal at the bank waiting for replenishment, then seeking/returning in later cycles, with the overhead thirst label tracking its position. The pond began empty. No console warnings or errors were captured. The automated Safari inspection displayed the DOM but did not provide a rendered frame during that session. The user subsequently confirmed that the autonomous milestone works correctly in Safari; this is user-confirmed verification, separate from the automated Chrome check.
 - Pi performance, extended unattended reliability, portrait layout and production-preview rendering remain unverified.
 
 Run `npm run dev` to view the scene.
@@ -155,13 +155,29 @@ Each stage should remain small enough to demonstrate and validate independently.
 | 0. Runnable baseline (implemented) | Grassland and a pond, a fixed overview camera and resize handling. | Verify actual setup/build commands and inspect browser startup, canvas resize and console errors. |
 | 1. Autonomous drinking (implemented) | One herbivore completes the demonstration above. | Focused timing, movement, bounds and accounting checks; repeated browser cycles and empty-water recovery. |
 | 2. Grazing, hunger and resting | Add one need at a time; an animal switches sensibly between food, water and rest. | Check resource consumption, need bounds and priority conflicts; observe transitions without rapid switching. |
-| 3. Multiple animals and local perception | Several animals choose nearby resources and interact visibly; add simple grouping only after selection works. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
-| 4. Predators, fleeing and hunting | Prey respond to nearby threats and predators pursue with explicit success/failure rules. | Check detection, escape, pursuit termination and encounter outcomes in repeatable scenarios. |
-| 5. Life cycles and populations | Births, ageing and deaths change population counts according to explicit rules. | Check lifecycle boundaries and counts, then run repeatable longer scenarios; apply the agreed collapse/replenishment policy. |
-| 6. World and presentation | Add trees, shelter, animation, sound and visual polish incrementally while behaviour remains readable. | Inspect visuals and behaviour, track asset licences, and compare measured performance before and after each addition. |
-| 7. Persistence and delivery | If approved, save/resume works and a chosen deployment supports unattended display. | Check save round trips and version handling; test browser restart, reload and sustained runs on the target Pi. |
+| 3a. Day/night cycle | A configurable simulated day changes daylight smoothly while the scene remains readable at night. | Check clock wraparound and equivalent time progression across render rates; observe a complete day/night transition. |
+| 3b. Heat, rain and tree shade | Simple trees provide accessible shade; an animal seeks and rests in shade during hot peak daytime sunshine, with rain reducing the need for sun shelter. | Check sunny midday, rain, night, shade boundaries and unavailable shade; observe travel, arrival, cooling and return to other activities. |
+| 4. Multiple animals and local perception | Several animals choose nearby resources and interact visibly; add simple grouping only after selection works. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
+| 5. Predators, fleeing and hunting | Prey respond to nearby threats and predators pursue with explicit success/failure rules. | Check detection, escape, pursuit termination and encounter outcomes in repeatable scenarios. |
+| 6. Life cycles and populations | Births, ageing and deaths change population counts according to explicit rules. | Check lifecycle boundaries and counts, then run repeatable longer scenarios; apply the agreed collapse/replenishment policy. |
+| 7. World and presentation | Refine trees and shelter, then add animation, sound and visual polish incrementally while behaviour remains readable. | Inspect visuals and behaviour, track asset licences, and compare measured performance before and after each addition. |
+| 8. Persistence and delivery | If approved, save/resume works and a chosen deployment supports unattended display. | Check save round trips and version handling; test browser restart, reload and sustained runs on the target Pi. |
 
 Performance measurement and unattended-run checks begin at the runnable baseline and continue throughout; they are not deferred to the final stage. Simple visual polish can happen earlier when it improves clarity without blocking behaviour work.
+
+### Day/night, heat and shade — planned
+
+Implement environmental behaviour after basic need prioritisation and resting, before expanding to multiple animals. Keep it entertainment-oriented and easy to observe:
+
+- Maintain time of day and weather as simulation state, independent of lighting and rendering. Use simulated time rather than the computer's wall clock.
+- Make direct-sun heat strongest around configurable peak daytime hours. An animal that becomes too hot should travel to an accessible spot under a tree canopy and sit or rest in its shade.
+- Represent tree shade as explicit simulation regions, separate from rendered shadows. Simple canopy footprints are a recommended first implementation; expensive dynamic shadows are not required for the behaviour to work.
+- Let shade reduce heat exposure and allow recovery. Use separate thresholds for seeking shade and leaving it so animals do not rapidly switch behaviour at the boundary.
+- Include a simple explicit rain state. During rain, suppress the peak-sun exposure rule so animals do not seek shade solely because the clock says midday. Existing heat may take time to dissipate; rain does not imply instant cooling or a requirement to seek shelter from rain.
+- Integrate cooling with hunger, thirst and rest priorities. Validate that shade seeking does not permanently prevent drinking or feeding. If shade is inaccessible or absent, use a bounded retry/fallback rule rather than endless travel or jitter.
+- Show time of day, weather and heat when introduced, alongside the animal's behaviour, so viewers can understand why it is resting under a tree.
+
+Acceptance should include repeatable sunny-midday, rainy-midday and night scenarios; arrival under a canopy without overshooting; bounded heat values; cooling while shaded; resumption of other activities; and safe handling of unavailable shade. Check the rules without Babylon and inspect at least one complete environmental cycle in the browser. Rain frequency, day length, heat thresholds and any effects on thirst or pond replenishment remain to be decided; no weather behaviour is implemented yet.
 
 ## Performance and reliability
 
@@ -183,6 +199,7 @@ Recommendations below are starting points for discussion, not approved commitmen
 | Decision | Recommended default and rationale |
 | --- | --- |
 | Exact Pi, display resolution and performance targets | Confirm the available hardware and measure the baseline before setting limits; do not promise a population or frame rate yet. |
+| Day length and weather tuning | Start with a configurable accelerated day and simple deterministic clear/rain intervals so behaviour is observable and repeatable. Exact durations, heat thresholds and rain frequency remain open; defer seasons and complex weather. |
 | Save/resume | Defer persistence until the autonomous loop is stable, then consider a local snapshot if continuity is desired. This keeps the initial scope small. |
 | Progression while the browser is closed | Initially evolve only while running. Offline catch-up or an always-running server needs an explicit product decision. |
 | Population collapse versus migration/replenishment | Keep death out of the first demonstration. Later consider explicit, observable migration to sustain a living display, subject to approval; never silently replace animals. |
