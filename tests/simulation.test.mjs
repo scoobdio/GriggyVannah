@@ -40,7 +40,7 @@ test('empty pond recovers and at least three autonomous cycles complete within b
   assert.ok(seen.has('Drinking')); assert.ok(seen.has('Returning'));
 });
 test('unavailable water waits safely; restoring accessibility recovers', () => {
-  const blocked = { ...c, pond: { ...c.pond, accessible: false }, refillRate: 0 };
+  const blocked = { ...c, pond: { ...c.pond, accessible: false }, environment: { ...c.environment, rainfallRate: 0 } };
   const s = createSimulation(blocked);
   for (let i = 0; i < 6000; i++) stepSimulation(s, blocked, 1/60);
   assert.equal(s.animal.behaviour, 'Waiting for water');
@@ -67,7 +67,7 @@ test('refill caps at capacity and non-positive time does nothing', () => {
   const before = structuredClone(s);
   stepSimulation(s, c, 0); stepSimulation(s, c, -1);
   assert.deepEqual(s, before);
-  const resting = { ...c, thirstRate: 0 };
+  const resting = { ...c, thirstRate: 0, environment: { ...c.environment, clearSeconds: 0, rainSeconds: 10000, transitionSeconds: 0 } };
   for (let i=0; i<10000; i++) stepSimulation(s, resting, 1/60);
   assert.equal(s.water, c.pond.capacity);
 });

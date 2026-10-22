@@ -4,13 +4,15 @@ import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { createHerbivore } from './animal';
 import { createStats } from './stats';
 import { createSimulation, createSimulationClock, simulationConfig, stepSimulation } from './simulation';
+import { createWeatherView } from './weatherView';
 import { worldConfig } from './config';
 
 export function attachEcosystem(scene: Scene, waterMesh: Mesh) {
   const config = { ...simulationConfig, pond: { ...simulationConfig.pond, ...worldConfig.pond } };
   const state = createSimulation(config);
   const animal = createHerbivore(scene);
-  const stats = createStats(config.pond.capacity, config.refillRate);
+  const stats = createStats(config.pond.capacity);
+  const weather = createWeatherView(scene);
   const advance = createSimulationClock(dt => stepSimulation(state, config, dt));
   const engine = scene.getEngine();
   const anchor = new Vector3();
@@ -21,6 +23,7 @@ export function attachEcosystem(scene: Scene, waterMesh: Mesh) {
   scene.onBeforeRenderObservable.add(() => {
     if (!document.hidden && !paused) advance(engine.getDeltaTime() / 1000);
     paused = document.hidden;
+    weather.update(state.environment, state.time);
     const dx = state.animal.x - animal.root.position.x;
     const dz = state.animal.z - animal.root.position.z;
     if (Math.hypot(dx, dz) > 1e-6) animal.root.rotation.y = Math.atan2(dx, dz);

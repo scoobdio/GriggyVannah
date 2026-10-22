@@ -1,3 +1,6 @@
+import { environmentAt, environmentConfig } from './environment.ts';
+import type { Environment, EnvironmentConfig } from './environment.ts';
+
 export interface Point { x: number; z: number }
 export interface SimulationConfig {
   pond: Point & { radius: number; capacity: number; initialWater: number; accessible: boolean };
@@ -8,7 +11,7 @@ export interface SimulationConfig {
   satisfiedThreshold: number;
   drinkRate: number;
   hydrationPerWater: number;
-  refillRate: number;
+  environment: EnvironmentConfig;
   drinkingRange: number;
   edgeOffset: number;
   retrySeconds: number;
@@ -17,6 +20,7 @@ export type Behaviour = 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for 
 export interface Simulation {
   animal: Point & { thirst: number; behaviour: Behaviour };
   water: number;
+  environment: Environment;
   time: number;
   cycles: number;
   retryAt: number;
@@ -26,7 +30,7 @@ export const simulationConfig: SimulationConfig = {
   pond: { x: 3, z: 1, radius: 3.1, capacity: 100, initialWater: 0, accessible: true },
   home: { x: -7, z: -4 }, speed: 2.4, thirstRate: 3,
   seekThreshold: 60, satisfiedThreshold: 10,
-  drinkRate: 12, hydrationPerWater: 4, refillRate: 2,
+  drinkRate: 12, hydrationPerWater: 4, environment: environmentConfig,
   drinkingRange: 0.85, edgeOffset: 0.75, retrySeconds: 1,
 };
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -38,6 +42,7 @@ export function createSimulation(c: SimulationConfig): Simulation {
   return {
     animal: { ...c.home, thirst: 55, behaviour: 'Resting' },
     water: Math.max(0, Math.min(c.pond.capacity, c.pond.initialWater)),
+    environment: environmentAt(0, c.environment),
     time: 0, cycles: 0, retryAt: 0,
     edge: { x: c.pond.x + (length ? dx / length : -1) * radius,
       z: c.pond.z + (length ? dz / length : 0) * radius },
@@ -66,7 +71,9 @@ export function drink(s: Simulation, c: SimulationConfig, requested: number) {
 export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
   if (!Number.isFinite(dt) || dt <= 0) return;
   s.time += dt;
-  s.water = Math.min(c.pond.capacity, s.water + c.refillRate * dt);
+  s.environment = environmentAt(s.time, c.environment);
+  const weatherChange = (s.environment.rainfall - s.environment.evaporation) * dt;
+  s.water = Math.max(0, Math.min(c.pond.capacity, s.water + weatherChange));
   const a = s.animal;
   a.thirst = Math.min(100, a.thirst + c.thirstRate * dt);
   if (a.behaviour === 'Returning') {

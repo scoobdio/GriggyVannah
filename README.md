@@ -10,7 +10,7 @@ The intended stack is TypeScript, Vite and Babylon.js. Start with a browser appl
 
 The first deliverable is a small autonomous scene: grassland, one watering hole and one placeholder herbivore that repeatedly becomes thirsty, travels to water and drinks while water replenishes. Make this cycle reliable and legible before expanding the ecosystem.
 
-The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, heat and rain should also influence behaviour: during peak daytime sunshine, animals should seek tree shade and sit or rest there when too hot, unless it is raining. These are ambitions, not current features.
+The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, temperature and rain now affect lighting and pond water. Animal heat and shade seeking remain planned: during peak daytime sunshine, animals should seek tree shade and sit or rest there when too hot, unless it is raining. Other ecological behaviours in this paragraph are ambitions, not current features.
 
 ## Current implementation and evidence
 
@@ -24,9 +24,10 @@ The original checkout contained only this README. A minimal browser application 
 | Pond position/radius and ground dimensions | `src/config.ts` | Geometry is shared with simulation interaction distances. |
 | Resize and development cleanup | `src/main.ts`, `src/scene.ts` | Adjusts rendering size/camera coverage; disposes the engine on module replacement. |
 | Autonomous herbivore and water stock | `src/simulation.ts`, `src/ecosystem.ts`, `src/animal.ts` | Focused automated checks and browser verification described below. |
+| Day/night, temperature and weather | `src/environment.ts`, `src/weatherView.ts` | Deterministic environmental rules; smooth lighting and lightweight rain visuals. |
 | Overhead thirst/behaviour and pond supply indicators | `src/stats.ts`, `src/style.css` | DOM meters follow the animal; pond panel includes completed cycles. |
 
-One block-built placeholder herbivore now seeks water, drinks, waits for replenishment when necessary, and returns to its resting spot. Thirst and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
+The pond fills through rain and slowly evaporates during clear peak-heat hours. One block-built placeholder herbivore now seeks water, drinks, waits for replenishment when necessary, and returns to its resting spot. Thirst and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
 
 Baseline validation on 22 October 2026 (before the autonomous milestone):
 
@@ -37,13 +38,21 @@ Baseline validation on 22 October 2026 (before the autonomous milestone):
 - Vite reported a large-chunk warning: the main production JavaScript chunk is approximately 1.02 MB minified / 241 kB gzip. This is a download-size observation, not a frame-rate measurement.
 - Browser console diagnostics, narrow portrait layouts, the WebGL failure path, production-preview rendering, Raspberry Pi performance and sustained unattended operation remain unverified. The earlier baseline did not include animal behaviour.
 
-Autonomous milestone verification:
+Earlier autonomous milestone verification (before weather-driven replenishment):
 
 - `npm test`: all six focused checks passed, covering movement clamping, range/access/request guards, exact consumption, hydration limits, bounded resources, empty/unreachable recovery, repeated cycles and refill capacity.
 - Equal two-minute simulated runs at 30 and 144 render updates per second produced identical state. A one-hour frame gap advanced only 250 ms of simulated time.
 - `npm run build` passed with the existing large-chunk warning (main JavaScript approximately 1.03 MB minified / 244 kB gzip).
 - Chrome on the development Mac completed four cycles without input over approximately two minutes with default configuration. Visual checks showed the animal at the bank waiting for replenishment, then seeking/returning in later cycles, with the overhead thirst label tracking its position. The pond began empty. No console warnings or errors were captured. The automated Safari inspection displayed the DOM but did not provide a rendered frame during that session. The user subsequently confirmed that the autonomous milestone works correctly in Safari; this is user-confirmed verification, separate from the automated Chrome check.
 - Pi performance, extended unattended reliability, portrait layout and production-preview rendering remain unverified.
+
+Weather milestone verification:
+
+- All 12 automated tests passed, including exact clear-temperature extrema, midnight wraparound, smooth rain transitions, rain cooling, peak-hour-only evaporation, separate water accounting, and six simulated days of bounded resources and recovery. The existing movement/drinking and frame-rate independence checks also pass.
+- `npm run build` passed, including TypeScript checking. Vite still reports a large-chunk warning; the main production chunk is approximately 936 kB minified / 222 kB gzip, with additional shader chunks.
+- Chrome showed clear midday conditions with evaporation, then nighttime rain, pond recovery to 99/100 water and seven completed drinking cycles. Time advanced from Day 1 at 08:00 to Day 2 around 02:54 with no captured console warnings or errors. This verifies day-to-night progression; a full 24-hour wrap is covered by automated logic tests rather than a complete browser observation.
+- The user also reported the feature running correctly. Safari automation was intentionally skipped. Pi performance and extended real-time unattended operation remain unverified.
+- Water balance is provisional: bounded quantities and recovery do not establish a sustainable supply/demand balance. Tune pond capacity, starting stock, rain timing/intensity, evaporation, thirst and drinking rates together in a later increment; leave this milestone's values unchanged pending that work.
 
 Run `npm run dev` to view the scene.
 
@@ -80,11 +89,13 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/scene.ts`: fixed overview camera, lighting and world assembly.
 - `src/world.ts`: reusable grassland and pond mesh/material creation functions.
 - `src/config.ts`: visual dimensions, pond placement and pixel-density cap.
+- `src/environment.ts`: simulated time, temperature curve, rain schedule and environmental water rates.
+- `src/weatherView.ts`: lighting, sky colour and a reusable rain line-system mesh.
 - `src/simulation.ts`: plain state, movement, water accounting, behaviour and fixed-step clock.
 - `src/ecosystem.ts`: connects simulation state to meshes and overhead DOM stats.
 - `src/animal.ts`: reusable placeholder herbivore creation.
-- `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel and display styling.
-- `tests/simulation.test.mjs`: focused simulation checks.
+- `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel, environmental readout and display styling.
+- `tests/simulation.test.mjs`, `tests/environment.test.mjs`: focused simulation, weather, timing and water-balance checks.
 - `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
 
 Meshes, materials and stat elements are created once. A fixed 1/60-second simulation step runs independently of rendering; the scene displays the resulting state. There are no shadows, textures, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
@@ -114,12 +125,12 @@ Default rules in `src/simulation.ts`:
 - Thirst rises 3 points per simulated second, capped at 100. Seek water at 60 and finish drinking at 10.
 - Travel at 2.4 scene units per simulated second to a radial bank point 0.75 units outside the water. Drink only outside the pond and within 0.85 units of its edge.
 - Consume up to 12 water units per second; each water unit removes 4 thirst points. Consumption is capped by available stock and remaining need.
-- Refill at 2 water units per second, capped at capacity. Replenishment happens before consumption each simulation tick.
+- Apply rainfall and evaporation before drinking each simulation tick, keeping water between zero and capacity. Constant replenishment has been replaced by the weather rules below.
 - At an empty pond, wait and retry once per simulated second, resuming when at least 5 units are available. An inaccessible pond leaves the animal safely waiting; it can resume when accessibility is restored.
 - Return to the starting resting spot after drinking, then repeat. This simple radial route assumes an unobstructed home outside the pond; obstacle avoidance is not implemented.
 - Hidden tabs pause progression. Frames longer than 250 ms discard excess time to bound catch-up work; reopening the app resets the world. This is a reversible initial policy, not a save/resume or offline-progression commitment.
 
-The water surface fades as supply falls; its bank and interaction radius stay fixed. The first cycle exercises water depletion and recovery. Configuration values are developer-owned and should remain finite with positive capacity, speed, hydration conversion and retry interval; the edge offset must fit within drinking range.
+The water surface fades as supply falls; its bank and interaction radius stay fixed. The pond starts dry; the first clear period exercises waiting until rain returns. With defaults, rain starts after 80 simulated seconds, so the initial wait is intentional. Configuration values are developer-owned and should remain finite with positive capacity, speed, hydration conversion and retry interval; the edge offset must fit within drinking range.
 
 The implemented end-to-end loop:
 
@@ -128,7 +139,7 @@ The implemented end-to-end loop:
 3. At a configured thirst threshold, select an accessible point at the water's edge and travel towards it.
 4. Stop within the configured drinking range. Consume water only while in range.
 5. Reduce available water by the amount actually consumed and reduce thirst according to an explicit conversion rule.
-6. Replenish the pond at a configured rate per simulated second, capped at its capacity.
+6. Replenish the pond through rain at a configured rate per simulated second, capped at its capacity; slowly evaporate water during clear peak-heat hours.
 7. Leave the drinking state when sufficiently hydrated, then allow the cycle to repeat without input.
 
 Use explicit units and configuration for rates, thresholds and distances. For this simple scene, an edge point on open ground is enough; general pathfinding is not required. Visible thirst, behaviour, water supply and cycle count expose cause and effect.
@@ -155,8 +166,8 @@ Each stage should remain small enough to demonstrate and validate independently.
 | 0. Runnable baseline (implemented) | Grassland and a pond, a fixed overview camera and resize handling. | Verify actual setup/build commands and inspect browser startup, canvas resize and console errors. |
 | 1. Autonomous drinking (implemented) | One herbivore completes the demonstration above. | Focused timing, movement, bounds and accounting checks; repeated browser cycles and empty-water recovery. |
 | 2. Grazing, hunger and resting | Add one need at a time; an animal switches sensibly between food, water and rest. | Check resource consumption, need bounds and priority conflicts; observe transitions without rapid switching. |
-| 3a. Day/night cycle | A configurable simulated day changes daylight smoothly while the scene remains readable at night. | Check clock wraparound and equivalent time progression across render rates; observe a complete day/night transition. |
-| 3b. Heat, rain and tree shade | Simple trees provide accessible shade; an animal seeks and rests in shade during hot peak daytime sunshine, with rain reducing the need for sun shelter. | Check sunny midday, rain, night, shade boundaries and unavailable shade; observe travel, arrival, cooling and return to other activities. |
+| 3a. Day/night, weather and pond balance (implemented ahead of grazing) | A simulated day changes daylight and temperature; rain fills the pond and peak-hour sun slowly evaporates water. | Check clock wraparound and equivalent time progression across render rates; observe a complete day/night transition. |
+| 3b. Animal heat and tree shade (planned) | Simple trees provide accessible shade; an animal seeks and rests in shade during hot peak daytime sunshine, with rain reducing the need for sun shelter. | Check sunny midday, rain, night, shade boundaries and unavailable shade; observe travel, arrival, cooling and return to other activities. |
 | 4. Multiple animals and local perception | Several animals choose nearby resources and interact visibly; add simple grouping only after selection works. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
 | 5. Predators, fleeing and hunting | Prey respond to nearby threats and predators pursue with explicit success/failure rules. | Check detection, escape, pursuit termination and encounter outcomes in repeatable scenarios. |
 | 6. Life cycles and populations | Births, ageing and deaths change population counts according to explicit rules. | Check lifecycle boundaries and counts, then run repeatable longer scenarios; apply the agreed collapse/replenishment policy. |
@@ -165,19 +176,34 @@ Each stage should remain small enough to demonstrate and validate independently.
 
 Performance measurement and unattended-run checks begin at the runnable baseline and continue throughout; they are not deferred to the final stage. Simple visual polish can happen earlier when it improves clarity without blocking behaviour work.
 
-### Day/night, heat and shade — planned
+### Day/night, temperature and weather — implemented
 
-Implement environmental behaviour after basic need prioritisation and resting, before expanding to multiple animals. Keep it entertainment-oriented and easy to observe:
+Defaults are explicit in `src/environment.ts` and use simulated elapsed seconds, not the computer's wall clock:
 
-- Maintain time of day and weather as simulation state, independent of lighting and rendering. Use simulated time rather than the computer's wall clock.
+- Start at 08:00; a full 24-hour day takes 300 simulated seconds (five minutes at normal speed). Day count increments at midnight.
+- Clear-weather temperature follows a smooth asymmetric curve from 18 °C at 02:30 to 35 °C at 14:00, then back to the next trough. These are entertainment tuning values, not a climate model. Rain cools that baseline by up to 4 °C, so weather can alter the observed daily maximum/minimum.
+- Daylight rises from 06:00, peaks at noon and falls to night at 18:00. Ambient illumination remains sufficient to watch animals at night. Sky colour and lighting respond smoothly to daylight and rain.
+- Repeat 80 seconds clear, then 40 seconds rainy. Rain intensity eases in/out over five seconds. The 120-second weather period differs from the 300-second day so rain does not always coincide with the same hour.
+- Full-strength rain adds 4 water units per simulated second, scaled by intensity. Direct sun evaporates at most 0.06 units per second, peaking at 14:00 and tapering to zero at 11:00 and 17:00. Evaporation stops at night and whenever rain intensity is positive.
+- Rainfall and evaporation are distinct from animal consumption. Weather rates describe potential flow: a full pond cannot overfill, and an empty pond cannot lose more water. The pond panel labels weather inflow/loss separately from the animal's drinking state.
+- The environmental panel displays day, 24-hour time, sunshine/rain/clear night and ambient temperature. Rain uses 100 short lines in one reusable mesh; no textures or external assets are needed.
+- Hidden-tab pausing and the existing bounded fixed-step clock apply equally to weather, temperature, animal behaviour and water. Reloading resets everything.
+
+Configuration requires a positive day length, non-negative clear/rain durations with a positive total period, non-negative transition/rate values, and ordered minimum/maximum temperatures. Animal heat, shade seeking, seasons and random weather are not implemented.
+
+### Animal heat and tree shade — planned
+
+Build on the implemented environment and basic need prioritisation before expanding to multiple animals. Keep it entertainment-oriented and easy to observe:
+
+- Reuse the existing time-of-day, rain and temperature state; keep animal heat separate from lighting and rendering.
 - Make direct-sun heat strongest around configurable peak daytime hours. An animal that becomes too hot should travel to an accessible spot under a tree canopy and sit or rest in its shade.
 - Represent tree shade as explicit simulation regions, separate from rendered shadows. Simple canopy footprints are a recommended first implementation; expensive dynamic shadows are not required for the behaviour to work.
 - Let shade reduce heat exposure and allow recovery. Use separate thresholds for seeking shade and leaving it so animals do not rapidly switch behaviour at the boundary.
-- Include a simple explicit rain state. During rain, suppress the peak-sun exposure rule so animals do not seek shade solely because the clock says midday. Existing heat may take time to dissipate; rain does not imply instant cooling or a requirement to seek shelter from rain.
+- Use the existing rain state to suppress the peak-sun exposure rule so animals do not seek shade solely because the clock says midday. Existing heat may take time to dissipate; rain does not imply instant cooling or a requirement to seek shelter from rain.
 - Integrate cooling with hunger, thirst and rest priorities. Validate that shade seeking does not permanently prevent drinking or feeding. If shade is inaccessible or absent, use a bounded retry/fallback rule rather than endless travel or jitter.
-- Show time of day, weather and heat when introduced, alongside the animal's behaviour, so viewers can understand why it is resting under a tree.
+- Add animal heat to the visible stats alongside the existing time, weather and ambient temperature, so viewers can understand why it is resting under a tree.
 
-Acceptance should include repeatable sunny-midday, rainy-midday and night scenarios; arrival under a canopy without overshooting; bounded heat values; cooling while shaded; resumption of other activities; and safe handling of unavailable shade. Check the rules without Babylon and inspect at least one complete environmental cycle in the browser. Rain frequency, day length, heat thresholds and any effects on thirst or pond replenishment remain to be decided; no weather behaviour is implemented yet.
+Acceptance should include repeatable sunny-midday, rainy-midday and night scenarios; arrival under a canopy without overshooting; bounded heat values; cooling while shaded; resumption of other activities; and safe handling of unavailable shade. Check the rules without Babylon and inspect at least one complete environmental cycle in the browser. Animal heat thresholds and effects on thirst remain to be decided; the implemented weather and pond rules provide the starting point.
 
 ## Performance and reliability
 
@@ -199,7 +225,8 @@ Recommendations below are starting points for discussion, not approved commitmen
 | Decision | Recommended default and rationale |
 | --- | --- |
 | Exact Pi, display resolution and performance targets | Confirm the available hardware and measure the baseline before setting limits; do not promise a population or frame rate yet. |
-| Day length and weather tuning | Start with a configurable accelerated day and simple deterministic clear/rain intervals so behaviour is observable and repeatable. Exact durations, heat thresholds and rain frequency remain open; defer seasons and complex weather. |
+| Pond supply/demand balance | Follow-up tuning is needed for sustained water availability. Measure dry-spell duration and animal demand before adjusting capacity, initial stock, rainfall and consumption together; current rates are provisional. |
+| Day length and weather tuning | Current provisional defaults are a five-minute day and 80/40-second clear/rain periods. Tune after observation; animal heat thresholds remain open. Defer seasons and complex weather. |
 | Save/resume | Defer persistence until the autonomous loop is stable, then consider a local snapshot if continuity is desired. This keeps the initial scope small. |
 | Progression while the browser is closed | Initially evolve only while running. Offline catch-up or an always-running server needs an explicit product decision. |
 | Population collapse versus migration/replenishment | Keep death out of the first demonstration. Later consider explicit, observable migration to sustain a living display, subject to approval; never silently replace animals. |
@@ -219,6 +246,7 @@ Recommendations below are starting points for discussion, not approved commitmen
 - Do not confuse a successful build with correct simulation behaviour. Validate logic with focused checks and inspect browser behaviour when tools allow.
 - Report what was tested, what failed and what remains unverified. Distinguish inspected code, executed behaviour, plans and unknowns.
 - Keep this README aligned with completed milestones, actual paths and supported commands.
+- Use Chrome for automated browser verification; Safari automation is not required. The Raspberry Pi browser remains the eventual hardware target.
 - Include a suggested git commit message at the end of each completed task; do not commit unless asked.
 
-The next recommended implementation increment is grazing and hunger, introducing one new need and its resource before adding multiple animals. The app remains local-only; no hosting, deployment, push or commit is part of this increment.
+The next environmental increment is animal heat and tree shade, using the implemented temperature and weather state. Grazing, hunger and need prioritisation remain separate small milestones before adding multiple animals. The app remains local-only; no hosting, deployment, push or commit is part of this increment.
