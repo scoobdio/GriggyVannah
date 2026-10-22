@@ -14,43 +14,66 @@ The longer-term world includes open plains, clusters of trees, sheltered areas a
 
 ## Current implementation and evidence
 
-Repository inspection on 22 October 2026 found only `README.md` among tracked project files and no additional application files in the working tree. No applicable `AGENTS.md` was found. The previous README contained only the project title, retained above.
+The original checkout contained only this README. A minimal browser application has now been established from scratch using TypeScript, Vite and Babylon.js. The previously reported implementation was not present and has not been treated as recovered code.
 
-| Area | Status in this checkout |
-| --- | --- |
-| Project brief | Present in `README.md`. |
-| TypeScript, Vite and Babylon.js application | Reported stack; no source, dependency manifest or configuration is present to verify it. |
-| Canvas, camera, lighting, materials and resize handling | Reported previous work; implementation is unavailable here. |
-| Separate `createGrassland` and `createPond` functions | Reported previous work; no definitions or source paths found. |
-| Configurable pond sizes and positions | Reported previous work; unverified. |
-| Watering-hole data and a `drink` function returning water consumed | Reported previous work; unverified, including guards for non-positive requests and unreachable water bodies. |
-| Moving box or other animal placeholder | Completion unknown; no implementation found. |
-| Autonomous behaviour, resource replenishment and simulation checks | Planned; absent from this checkout. |
+| Area | Present in code | Verification |
+| --- | --- | --- |
+| Canvas and application startup | `index.html`, `src/main.ts` | Validation results below. |
+| Fixed camera, daylight and scene assembly | `src/scene.ts` | Validation results below. |
+| Reusable `createGrassland` and `createPond` helpers | `src/world.ts` | Simple ground, sand bank and opaque water meshes. |
+| Pond position/radius and ground dimensions | `src/config.ts` | Explicit visual configuration; quantities are not simulated. |
+| Resize and development cleanup | `src/main.ts`, `src/scene.ts` | Adjusts rendering size/camera coverage; disposes the engine on module replacement. |
+| Water quantities, drinking, replenishment, animals and movement | Not implemented | Next milestone; previous reports remain unverified. |
 
-**Verified:** the file inventory and absence of application configuration in this working tree. **Not verified:** any running scene or simulation behaviour. No application was executed, and no build or tests were run because there is no runnable project here. This does not establish whether earlier work exists in another checkout or revision.
+The scene is deliberately static. Water is currently a visual surface, not a consumable resource. No backend, persistence, external assets or simulation loop has been added. The camera has no input controls.
 
-Before implementing features, locate and preserve any recoverable previous application. If it is unavailable, establish only the minimal agreed browser stack needed for the first demonstration. Do not replace useful work if it is subsequently found. Update this section with real source paths and distinguish code inspection from runtime verification as code becomes available.
+Validation on 22 October 2026:
+
+- Dependency installation completed successfully with no audit vulnerabilities reported at installation time; exact dependency versions are pinned and locked.
+- `npm run build` passed, including `npm run check`, using Node 24.21.0 and npm 11.19.0.
+- The Vite development server returned HTTP 200. Safari on the development Mac visibly rendered the grassland, sand bank and water, including after live reload and a window-size change.
+- Browser inspection caught a ground dimension mapping error that type checking did not catch; it was corrected and visually rechecked before the final successful build.
+- Vite reported a large-chunk warning: the main production JavaScript chunk is approximately 1.02 MB minified / 241 kB gzip. This is a download-size observation, not a frame-rate measurement.
+- Browser console diagnostics, narrow portrait layouts, the WebGL failure path, production-preview rendering, Raspberry Pi performance and sustained unattended operation remain unverified. No animal or resource behaviour exists yet.
+
+The local verification server was stopped after checking. Run `npm run dev` to view the scene again.
 
 ## Setup and commands
 
-There are currently **no supported installation, development, checking or build commands** in this checkout. In particular, there is no `package.json`, lockfile, TypeScript configuration, Vite configuration or HTML entry point. Do not assume that `npm install`, `npm run dev`, `npm run check`, `npm test` or `npm run build` will work here.
+Use Node.js 22.12 or newer (development verified with Node 24) and npm. A browser with WebGL enabled is required. VS Code is optional. Dependencies are recorded in `package.json` and locked in `package-lock.json`.
 
-For the eventual application, prerequisites will include a browser with support for the chosen Babylon renderer, a compatible Node.js version and the package manager selected by the recovered or newly established manifest and lockfile. Exact versions remain unspecified. VS Code is the intended editor, not a runtime dependency.
+```sh
+npm ci
+npm run dev
+```
 
-Once the application is available, document its actual prerequisites and scripts here, including:
+Open the local URL printed by Vite. The development server binds to this machine only. No account, environment variables or cloud services are needed.
 
-- Dependency installation using its chosen package manager and lockfile.
-- Starting the local development server and opening the URL it reports.
-- Existing type, logic and other checking commands, with their distinct purposes.
-- Building the browser application and, if supported, previewing the build.
+| Command | Purpose |
+| --- | --- |
+| `npm ci` | Install the versions in the lockfile on a fresh checkout. |
+| `npm run dev` | Start Vite's development server with live updates. |
+| `npm run check` | Check application TypeScript without emitting files. |
+| `npm run build` | Run the type check, then create the production application in `dist/`. |
+| `npm run preview` | Serve the existing production build locally; run the build first. |
 
-Verify each command against the manifest before documenting it as supported. Record execution results separately: a successful build does not prove correct simulation behaviour.
+Stop a local server with Ctrl+C. There is no test script yet: the baseline has no ecosystem logic to test. Future movement/resource logic needs focused checks in addition to browser inspection. A successful build does not prove correct simulation behaviour.
+
+The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's ES module packages](https://doc.babylonjs.com/setup/frameworkPackages/npmSupport/). No custom Vite configuration is required for this baseline.
 
 ## Architecture
 
 ### Existing structure
 
-`README.md` is the entire visible project structure outside Git metadata. No application architecture can yet be confirmed. Names such as `createGrassland`, `createPond` and `drink` describe reported work, not verified modules.
+- `index.html`: canvas, quiet display caption and startup-error message.
+- `src/main.ts`: engine creation, render loop, resize handling and development cleanup.
+- `src/scene.ts`: fixed overview camera, lighting and world assembly.
+- `src/world.ts`: reusable grassland and pond mesh/material creation functions.
+- `src/config.ts`: visual dimensions, pond placement and pixel-density cap.
+- `src/style.css`: full-window canvas and responsive caption styling.
+- `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
+
+Meshes and materials are created once. The render loop currently only draws the scene; it does not advance ecosystem state. There are no shadows, textures, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
 
 ### Recommended evolution
 
@@ -69,7 +92,7 @@ Initially, startup, a small simulation module and scene creation helpers may be 
 
 ## First autonomous demonstration — proposed
 
-This milestone is not implemented in this checkout. Its prerequisite is recovering or establishing the minimal runnable application described above.
+This milestone is not implemented in this checkout. The minimal runnable application is now present; this is the next implementation milestone.
 
 Build one end-to-end loop:
 
@@ -102,7 +125,7 @@ Each stage should remain small enough to demonstrate and validate independently.
 
 | Stage | Observable outcome | Validation |
 | --- | --- | --- |
-| 0. Runnable baseline | Recover prior work where available; grassland and a pond render and resize correctly. | Verify actual setup/build commands and inspect browser startup, canvas resize and console errors. |
+| 0. Runnable baseline (implemented) | Grassland and a pond, a fixed overview camera and resize handling. | Verify actual setup/build commands and inspect browser startup, canvas resize and console errors. |
 | 1. Autonomous drinking | One herbivore completes the demonstration above. | Focused timing, movement, bounds and accounting checks; repeated browser cycles and empty-water recovery. |
 | 2. Grazing, hunger and resting | Add one need at a time; an animal switches sensibly between food, water and rest. | Check resource consumption, need bounds and priority conflicts; observe transitions without rapid switching. |
 | 3. Multiple animals and local perception | Several animals choose nearby resources and interact visibly; add simple grouping only after selection works. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
@@ -153,4 +176,4 @@ Recommendations below are starting points for discussion, not approved commitmen
 - Report what was tested, what failed and what remains unverified. Distinguish inspected code, executed behaviour, plans and unknowns.
 - Keep this README aligned with completed milestones, actual paths and supported commands.
 
-The next recommended implementation increment is to recover or establish the minimal runnable baseline and then complete the one-herbivore autonomous drinking demonstration. No application implementation, dependency installation or deployment was performed as part of this documentation task.
+The next recommended implementation increment is the one-herbivore autonomous drinking demonstration. The baseline is local-only; no hosting, deployment, push or commit is part of this increment.
