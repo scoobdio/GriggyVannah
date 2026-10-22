@@ -7,6 +7,15 @@ const canvas = document.querySelector<HTMLCanvasElement>('#world');
 const error = document.querySelector<HTMLParagraphElement>('#error');
 if (!canvas || !error) throw new Error('Required application elements are missing.');
 
+const reportRuntimeError = (event: ErrorEvent) => {
+  error.hidden = false;
+  error.textContent = import.meta.env.DEV
+    ? `The savannah stopped: ${event.message}`
+    : 'The savannah encountered a problem. Please reload the page.';
+};
+window.addEventListener('error', reportRuntimeError);
+import.meta.hot?.dispose(() => window.removeEventListener('error', reportRuntimeError));
+
 let engine: Engine | undefined;
 try {
   engine = new Engine(canvas, true, { stencil: false });

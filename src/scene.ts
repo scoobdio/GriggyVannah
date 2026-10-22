@@ -6,6 +6,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { worldConfig } from './config';
 import { createGrassland, createPond } from './world';
+import { attachEcosystem } from './ecosystem';
 
 export function createSavannahScene(engine: Engine) {
   const scene = new Scene(engine);
@@ -34,6 +35,7 @@ export function createSavannahScene(engine: Engine) {
   light.groundColor = Color3.FromHexString('#8a7956');
 
   createGrassland(scene, worldConfig.grassland);
-  createPond(scene, worldConfig.pond);
+  const pond = createPond(scene, worldConfig.pond);
+  attachEcosystem(scene, pond.water);
   return scene;
 }

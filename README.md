@@ -21,22 +21,31 @@ The original checkout contained only this README. A minimal browser application 
 | Canvas and application startup | `index.html`, `src/main.ts` | Validation results below. |
 | Fixed camera, daylight and scene assembly | `src/scene.ts` | Validation results below. |
 | Reusable `createGrassland` and `createPond` helpers | `src/world.ts` | Simple ground, sand bank and opaque water meshes. |
-| Pond position/radius and ground dimensions | `src/config.ts` | Explicit visual configuration; quantities are not simulated. |
+| Pond position/radius and ground dimensions | `src/config.ts` | Geometry is shared with simulation interaction distances. |
 | Resize and development cleanup | `src/main.ts`, `src/scene.ts` | Adjusts rendering size/camera coverage; disposes the engine on module replacement. |
-| Water quantities, drinking, replenishment, animals and movement | Not implemented | Next milestone; previous reports remain unverified. |
+| Autonomous herbivore and water stock | `src/simulation.ts`, `src/ecosystem.ts`, `src/animal.ts` | Focused automated checks and browser verification described below. |
+| Overhead thirst/behaviour and pond supply indicators | `src/stats.ts`, `src/style.css` | DOM meters follow the animal; pond panel includes completed cycles. |
 
-The scene is deliberately static. Water is currently a visual surface, not a consumable resource. No backend, persistence, external assets or simulation loop has been added. The camera has no input controls.
+One block-built placeholder herbivore now seeks water, drinks, waits for replenishment when necessary, and returns to its resting spot. Thirst and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
 
-Validation on 22 October 2026:
+Baseline validation on 22 October 2026 (before the autonomous milestone):
 
 - Dependency installation completed successfully with no audit vulnerabilities reported at installation time; exact dependency versions are pinned and locked.
 - `npm run build` passed, including `npm run check`, using Node 24.21.0 and npm 11.19.0.
 - The Vite development server returned HTTP 200. Safari on the development Mac visibly rendered the grassland, sand bank and water, including after live reload and a window-size change.
 - Browser inspection caught a ground dimension mapping error that type checking did not catch; it was corrected and visually rechecked before the final successful build.
 - Vite reported a large-chunk warning: the main production JavaScript chunk is approximately 1.02 MB minified / 241 kB gzip. This is a download-size observation, not a frame-rate measurement.
-- Browser console diagnostics, narrow portrait layouts, the WebGL failure path, production-preview rendering, Raspberry Pi performance and sustained unattended operation remain unverified. No animal or resource behaviour exists yet.
+- Browser console diagnostics, narrow portrait layouts, the WebGL failure path, production-preview rendering, Raspberry Pi performance and sustained unattended operation remain unverified. The earlier baseline did not include animal behaviour.
 
-The local verification server was stopped after checking. Run `npm run dev` to view the scene again.
+Autonomous milestone verification:
+
+- `npm test`: all six focused checks passed, covering movement clamping, range/access/request guards, exact consumption, hydration limits, bounded resources, empty/unreachable recovery, repeated cycles and refill capacity.
+- Equal two-minute simulated runs at 30 and 144 render updates per second produced identical state. A one-hour frame gap advanced only 250 ms of simulated time.
+- `npm run build` passed with the existing large-chunk warning (main JavaScript approximately 1.03 MB minified / 244 kB gzip).
+- Chrome on the development Mac completed four cycles without input over approximately two minutes with default configuration. Visual checks showed the animal at the bank waiting for replenishment, then seeking/returning in later cycles, with the overhead thirst label tracking its position. The pond began empty. No console warnings or errors were captured. Safari displayed the DOM but did not provide a rendered frame during this session; the current milestone is not verified in Safari.
+- Pi performance, extended unattended reliability, portrait layout and production-preview rendering remain unverified.
+
+Run `npm run dev` to view the scene.
 
 ## Setup and commands
 
@@ -53,11 +62,12 @@ Open the local URL printed by Vite. The development server binds to this machine
 | --- | --- |
 | `npm ci` | Install the versions in the lockfile on a fresh checkout. |
 | `npm run dev` | Start Vite's development server with live updates. |
+| `npm test` | Run focused simulation checks without Babylon or a browser. |
 | `npm run check` | Check application TypeScript without emitting files. |
 | `npm run build` | Run the type check, then create the production application in `dist/`. |
 | `npm run preview` | Serve the existing production build locally; run the build first. |
 
-Stop a local server with Ctrl+C. There is no test script yet: the baseline has no ecosystem logic to test. Future movement/resource logic needs focused checks in addition to browser inspection. A successful build does not prove correct simulation behaviour.
+Stop a local server with Ctrl+C. `npm test` uses Node’s built-in test runner and TypeScript stripping (available with the explicit flag on the supported Node versions), without additional test dependencies. A successful build does not prove correct simulation behaviour.
 
 The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's ES module packages](https://doc.babylonjs.com/setup/frameworkPackages/npmSupport/). No custom Vite configuration is required for this baseline.
 
@@ -70,10 +80,14 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/scene.ts`: fixed overview camera, lighting and world assembly.
 - `src/world.ts`: reusable grassland and pond mesh/material creation functions.
 - `src/config.ts`: visual dimensions, pond placement and pixel-density cap.
-- `src/style.css`: full-window canvas and responsive caption styling.
+- `src/simulation.ts`: plain state, movement, water accounting, behaviour and fixed-step clock.
+- `src/ecosystem.ts`: connects simulation state to meshes and overhead DOM stats.
+- `src/animal.ts`: reusable placeholder herbivore creation.
+- `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel and display styling.
+- `tests/simulation.test.mjs`: focused simulation checks.
 - `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
 
-Meshes and materials are created once. The render loop currently only draws the scene; it does not advance ecosystem state. There are no shadows, textures, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
+Meshes, materials and stat elements are created once. A fixed 1/60-second simulation step runs independently of rendering; the scene displays the resulting state. There are no shadows, textures, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
 
 ### Recommended evolution
 
@@ -90,11 +104,24 @@ Keep the design small and introduce structure as the first demonstration require
 
 Initially, startup, a small simulation module and scene creation helpers may be sufficient. Proposed module names and folders are intentionally left open until there is code to organise.
 
-## First autonomous demonstration — proposed
+## First autonomous demonstration — implemented
 
-This milestone is not implemented in this checkout. The minimal runnable application is now present; this is the next implementation milestone.
+Implemented with one placeholder herbivore. Its overhead label shows behaviour and thirst from 0–100% (higher means thirstier); the pond panel shows supply and completed drinking cycles.
 
-Build one end-to-end loop:
+Default rules in `src/simulation.ts`:
+
+- Start with thirst 55 and an empty pond of capacity 100 water units.
+- Thirst rises 3 points per simulated second, capped at 100. Seek water at 60 and finish drinking at 10.
+- Travel at 2.4 scene units per simulated second to a radial bank point 0.75 units outside the water. Drink only outside the pond and within 0.85 units of its edge.
+- Consume up to 12 water units per second; each water unit removes 4 thirst points. Consumption is capped by available stock and remaining need.
+- Refill at 2 water units per second, capped at capacity. Replenishment happens before consumption each simulation tick.
+- At an empty pond, wait and retry once per simulated second, resuming when at least 5 units are available. An inaccessible pond leaves the animal safely waiting; it can resume when accessibility is restored.
+- Return to the starting resting spot after drinking, then repeat. This simple radial route assumes an unobstructed home outside the pond; obstacle avoidance is not implemented.
+- Hidden tabs pause progression. Frames longer than 250 ms discard excess time to bound catch-up work; reopening the app resets the world. This is a reversible initial policy, not a save/resume or offline-progression commitment.
+
+The water surface fades as supply falls; its bank and interaction radius stay fixed. The first cycle exercises water depletion and recovery. Configuration values are developer-owned and should remain finite with positive capacity, speed, hydration conversion and retry interval; the edge offset must fit within drinking range.
+
+The implemented end-to-end loop:
 
 1. Display grassland, one watering hole and one placeholder herbivore.
 2. Increase the animal's thirst over simulated time, with explicit lower and upper bounds.
@@ -104,7 +131,7 @@ Build one end-to-end loop:
 6. Replenish the pond at a configured rate per simulated second, capped at its capacity.
 7. Leave the drinking state when sufficiently hydrated, then allow the cycle to repeat without input.
 
-Use explicit units and configuration for rates, thresholds and distances. For this simple scene, an edge point on open ground is enough; general pathfinding is not required. A small optional diagnostic view can expose thirst, water quantity and behaviour state to make cause and effect observable.
+Use explicit units and configuration for rates, thresholds and distances. For this simple scene, an edge point on open ground is enough; general pathfinding is not required. Visible thirst, behaviour, water supply and cycle count expose cause and effect.
 
 ### Acceptance criteria
 
@@ -126,7 +153,7 @@ Each stage should remain small enough to demonstrate and validate independently.
 | Stage | Observable outcome | Validation |
 | --- | --- | --- |
 | 0. Runnable baseline (implemented) | Grassland and a pond, a fixed overview camera and resize handling. | Verify actual setup/build commands and inspect browser startup, canvas resize and console errors. |
-| 1. Autonomous drinking | One herbivore completes the demonstration above. | Focused timing, movement, bounds and accounting checks; repeated browser cycles and empty-water recovery. |
+| 1. Autonomous drinking (implemented) | One herbivore completes the demonstration above. | Focused timing, movement, bounds and accounting checks; repeated browser cycles and empty-water recovery. |
 | 2. Grazing, hunger and resting | Add one need at a time; an animal switches sensibly between food, water and rest. | Check resource consumption, need bounds and priority conflicts; observe transitions without rapid switching. |
 | 3. Multiple animals and local perception | Several animals choose nearby resources and interact visibly; add simple grouping only after selection works. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
 | 4. Predators, fleeing and hunting | Prey respond to nearby threats and predators pursue with explicit success/failure rules. | Check detection, escape, pursuit termination and encounter outcomes in repeatable scenarios. |
@@ -175,5 +202,6 @@ Recommendations below are starting points for discussion, not approved commitmen
 - Do not confuse a successful build with correct simulation behaviour. Validate logic with focused checks and inspect browser behaviour when tools allow.
 - Report what was tested, what failed and what remains unverified. Distinguish inspected code, executed behaviour, plans and unknowns.
 - Keep this README aligned with completed milestones, actual paths and supported commands.
+- Include a suggested git commit message at the end of each completed task; do not commit unless asked.
 
-The next recommended implementation increment is the one-herbivore autonomous drinking demonstration. The baseline is local-only; no hosting, deployment, push or commit is part of this increment.
+The next recommended implementation increment is grazing and hunger, introducing one new need and its resource before adding multiple animals. The app remains local-only; no hosting, deployment, push or commit is part of this increment.
