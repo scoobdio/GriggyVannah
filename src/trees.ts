@@ -33,13 +33,15 @@ export function createTrees(scene: Scene) {
     const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
     return value - Math.floor(value);
   };
-  for (let i=0;i<75;i++) {
-    const x = scatter(i*2)*88-44;
-    const z = scatter(i*2+1)*60-14;
+  for (let i=0;i<91;i++) {
+    // Extra low scrub gives the left foreground some texture without adding trees.
+    const leftSide = i >= 75;
+    const x = leftSide ? -38 + scatter(i*2)*22 : scatter(i*2)*88-44;
+    const z = leftSide ? -12 + scatter(i*2+1)*24 : scatter(i*2+1)*60-14;
     // Keep the banks and central travel corridor open. Low scrub is passable scenery.
     if ((x>-13 && x<10 && z>-7 && z<5) ||
         pondConfigs.some(p => Math.hypot(x-p.x,z-p.z)<p.radius+p.shoreWidth+1.5) ||
-        shadeAreas.some(t => Math.hypot(x-t.x,z-t.z)<1)) continue;
+        shadeAreas.some(t => Math.hypot(x-t.x,z-t.z)<t.radius+0.5)) continue;
     const bush=CreateSphere(`scrub-${i}`, {diameter:1,segments:4},scene);
     const size=0.6+(i%4)*0.22;
     bush.scaling.set(size*1.5,size*0.7,size);
