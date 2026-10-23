@@ -19,7 +19,7 @@ export function createGrassland(scene: Scene, config: { width: number; depth: nu
 }
 
 export function createPond(scene: Scene, config: PondConfig) {
-  const shore = CreateCylinder('pond-shore', {
+  const shore = CreateCylinder(`${config.id}-shore`, {
     diameter: (config.radius + config.shoreWidth) * 2,
     height: 0.08,
     tessellation: 32,
@@ -27,7 +27,7 @@ export function createPond(scene: Scene, config: PondConfig) {
   shore.position.set(config.x, 0.04, config.z);
   shore.material = material(scene, 'sand', '#d6bf83');
 
-  const water = CreateCylinder('pond-water', {
+  const water = CreateCylinder(`${config.id}-water`, {
     diameter: config.radius * 2,
     height: 0.025,
     tessellation: 32,

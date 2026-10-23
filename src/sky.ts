@@ -1,6 +1,5 @@
 import type { Scene } from '@babylonjs/core/scene';
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
-import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Effect } from '@babylonjs/core/Materials/effect';
@@ -77,10 +76,6 @@ export function createSky(scene: Scene) {
   shader.backFaceCulling = false;
   shader.disableDepthWrite = true;
   sky.material = shader; sky.isPickable = false; sky.infiniteDistance = true;
-  const earth = new StandardMaterial('distant-earth', scene);
-  earth.diffuseColor = Color3.FromHexString('#a5a368'); earth.specularColor = Color3.Black();
-  const ground = CreateGround('surrounding-plains',{width:240,height:240},scene);
-  ground.position.y = -0.025; ground.material = earth;
   const hills = new StandardMaterial('distant-hills',scene);
   hills.diffuseColor=Color3.FromHexString('#7f8e73'); hills.specularColor=Color3.Black();
   for(let i=0;i<14;i++) {

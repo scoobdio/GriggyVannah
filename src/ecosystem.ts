@@ -5,10 +5,9 @@ import { createHerbivore } from './animal';
 import { createStats } from './stats';
 import { createSimulation, createSimulationClock, simulationConfig, stepSimulation } from './simulation';
 import { createWeatherView } from './weatherView';
-import { worldConfig } from './config';
 
-export function attachEcosystem(scene: Scene, waterMesh: Mesh) {
-  const config = { ...simulationConfig, pond: { ...simulationConfig.pond, ...worldConfig.pond } };
+export function attachEcosystem(scene: Scene, waterMeshes: Mesh[]) {
+  const config = { ...simulationConfig };
   // Development-only visual scenarios; production always starts from normal defaults.
   const preview = import.meta.env.DEV ? new URLSearchParams(location.search).get('preview') : null;
   if (preview === 'night' || preview === 'rain' || preview === 'heat') {
@@ -25,7 +24,7 @@ export function attachEcosystem(scene: Scene, waterMesh: Mesh) {
     scene.onDisposeObservable.add(() => notice.remove());
   }
   const animal = createHerbivore(scene);
-  const stats = createStats(config.pond.capacity);
+  const stats = createStats(config.ponds);
   const weather = createWeatherView(scene);
   const advance = createSimulationClock(dt => stepSimulation(state, config, dt));
   const engine = scene.getEngine();
@@ -44,7 +43,10 @@ export function attachEcosystem(scene: Scene, waterMesh: Mesh) {
     animal.root.position.set(state.animal.x, state.animal.behaviour === 'Cooling in shade' ? -0.25 : 0, state.animal.z);
     animal.head.rotation.x = state.animal.behaviour === 'Drinking' ? 0.5 : 0;
     // Keep the bank fixed: colour/visibility reflects stock, not interaction geometry.
-    waterMesh.visibility = state.water > 0 ? 0.35 + 0.65 * state.water / config.pond.capacity : 0;
+    waterMeshes.forEach((mesh, i) => {
+      const stock = state.ponds[i].water;
+      mesh.visibility = stock > 0 ? 0.35 + 0.65 * stock / config.ponds[i].capacity : 0;
+    });
   });
   scene.onAfterRenderObservable.add(() => {
     anchor.set(state.animal.x, 2.1, state.animal.z);

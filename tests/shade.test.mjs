@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSimulation, stepSimulation, simulationConfig as base, isShaded, shadeSpot, distance, clearRoute } from '../src/simulation.ts';
+import { createSimulation, stepSimulation, simulationConfig as defaults, isShaded, shadeSpot, distance, clearRoute } from '../src/simulation.ts';
+const base = { ...defaults, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
 const hot = { ...base, thirstRate:0, environment:{ ...base.environment, startHour:14, daySeconds:100000, clearSeconds:10000 } };
 function tick(s,c,seconds) { for(let i=0;i<seconds*60;i++) stepSimulation(s,c,1/60); }
 
@@ -10,7 +11,7 @@ test('hot animal arrives in shade without overshooting, cools and resumes activi
  for(let i=0;i<60*30;i++) {
   stepSimulation(s,hot,1/60);
   assert.ok(s.animal.heat>=0 && s.animal.heat<=100);
-  assert.ok(distance(s.animal,hot.pond)>=hot.pond.radius);
+  assert.ok(distance(s.animal,hot.ponds[0])>=hot.ponds[0].radius);
   if(s.animal.behaviour==='Cooling in shade') {
    cooling=true;
    assert.ok(isShaded(s.animal,hot));
@@ -26,7 +27,7 @@ test('hot animal arrives in shade without overshooting, cools and resumes activi
 test('urgent thirst interrupts shade when water exists; empty water allows cooling', () => {
  const s=createSimulation(hot); s.animal.heat=90; s.animal.thirst=100;
  stepSimulation(s,hot,1/60); assert.equal(s.animal.behaviour,'Seeking shade');
- s.water=50; stepSimulation(s,hot,1/60);
+ s.ponds[0].water=50; stepSimulation(s,hot,1/60);
  assert.equal(s.animal.behaviour,'Seeking water'); assert.equal(s.shadeId,null);
  tick(s,hot,15); assert.ok(s.cycles>0);
 });
@@ -43,12 +44,12 @@ test('rain and night reduce heat without triggering shade seeking', () => {
 });
 test('unavailable or unsafe shade does not cause endless travel or block drinking', () => {
  for(const shades of [[],hot.shades.map(x=>({...x,accessible:false})),[
-  {id:'unsafe',x:hot.pond.x,z:hot.pond.z,radius:1,accessible:true},
+  {id:'unsafe',x:hot.ponds[0].x,z:hot.ponds[0].z,radius:1,accessible:true},
  ]]) {
   const c={...hot,shades}; const s=createSimulation(c);
   s.animal.heat=100; s.animal.thirst=20;
   tick(s,c,5); assert.equal(s.shadeId,null); assert.equal(distance(s.animal,c.home),0);
-  s.water=50; s.animal.thirst=100; tick(s,c,10); assert.ok(s.cycles>0);
+  s.ponds[0].water=50; s.animal.thirst=100; tick(s,c,10); assert.ok(s.cycles>0);
  }
 });
 test('shade boundaries are explicit and paths cannot cross pond or trunks', () => {
@@ -64,7 +65,7 @@ test('several days preserve heat bounds and both drinking and cooling occur', ()
   stepSimulation(s,base,1/60);
   cool ||= s.animal.behaviour==='Cooling in shade';
   assert.ok(s.animal.heat>=0 && s.animal.heat<=100);
-  assert.ok(distance(s.animal,base.pond)>=base.pond.radius);
+  assert.ok(distance(s.animal,base.ponds[0])>=base.ponds[0].radius);
  }
  assert.ok(cool); assert.ok(s.cycles>3);
 });

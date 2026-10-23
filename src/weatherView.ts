@@ -14,13 +14,17 @@ export function createWeatherView(scene: Scene) {
   const wet = Color4.FromHexString('#7b919fff');
   const clear = new Color4();
   const lines: Vector3[][] = [];
-  // A single reusable line-system mesh; deterministic positions, no particle textures.
-  for (let i = 0; i < 100; i++) {
-    const x = ((i * 17) % 97) / 97 * 32 - 16;
-    const z = ((i * 31) % 89) / 89 * 26 - 13;
-    lines.push([new Vector3(x, 0, z), new Vector3(x, 0, z)]);
+  const seeds: { x: number; y: number; speed: number }[] = [];
+  const hash = (n: number) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+  // Camera-local depth layers keep rain across the viewport, including on resize.
+  // One reusable mesh; no particles, textures or per-frame object creation.
+  for (let i = 0; i < 420; i++) {
+    lines.push([new Vector3(), new Vector3()]);
+    seeds.push({ x: hash(i + 1), y: hash(i + 1200), speed: 0.6 + hash(i + 2400) * 0.5 });
   }
   const rainMesh = CreateLineSystem('rain', { lines, updatable: true }, scene);
+  rainMesh.parent = scene.activeCamera;
+  rainMesh.alwaysSelectAsActiveMesh = true;
   rainMesh.color = Color3.FromHexString('#c5e2eb');
   rainMesh.isPickable = false;
   rainMesh.setEnabled(false);
@@ -32,11 +36,20 @@ export function createWeatherView(scene: Scene) {
       Color4.LerpToRef(clear, wet, e.rain * 0.55, scene.clearColor);
       rainMesh.setEnabled(e.rain > 0.001);
       if (e.rain <= 0.001) return;
-      rainMesh.alpha = e.rain * 0.55;
+      rainMesh.alpha = e.rain * (0.25 + e.daylight * 0.22);
+      const camera = scene.activeCamera!;
+      const aspect = scene.getEngine().getAspectRatio(camera);
+      const tangent = Math.tan(camera.fov / 2);
       for (let i = 0; i < lines.length; i++) {
-        const y = 6 - ((time * 9 + i * 0.73) % 6);
-        lines[i][0].y = y;
-        lines[i][1].y = y + 0.45;
+        const depth = 1.5 + (i % 7) * 2;
+        const halfHeight = depth * tangent;
+        const halfWidth = halfHeight * aspect;
+        const fall = time * seeds[i].speed;
+        const x = (((seeds[i].x + fall * 0.075) % 1) * 2.4 - 1.2) * halfWidth;
+        const y = (1.2 - ((seeds[i].y + fall) % 1) * 2.4) * halfHeight;
+        const length = halfHeight * (0.035 + (i % 5) * 0.009);
+        lines[i][0].set(x, y, depth);
+        lines[i][1].set(x - length * 0.22, y + length, depth);
       }
       CreateLineSystem('rain', { lines, instance: rainMesh });
     },

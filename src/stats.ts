@@ -1,6 +1,7 @@
+import type { PondConfig } from './config';
 import type { Simulation } from './simulation';
 
-export function createStats(capacity: number) {
+export function createStats(ponds: PondConfig[]) {
   const label = document.createElement('div');
   label.className = 'animal-stats';
   label.innerHTML = '<strong>Herbivore</strong><span class="behaviour"></span><label>Thirst <span class="thirst-value"></span><meter min="0" max="100" low="35" high="65" optimum="0" aria-label="Thirst: higher means thirstier"></meter></label>';
@@ -11,7 +12,7 @@ export function createStats(capacity: number) {
   const heatMeter = heatLabel.querySelector('meter')!;
   const panel = document.createElement('aside');
   panel.className = 'water-stats';
-  panel.innerHTML = '<strong>Watering hole</strong><span class="water-value"></span><meter min="0" aria-label="Available pond water"></meter><span class="cycles"></span>';
+  panel.innerHTML = '<strong>Watering holes</strong><span class="water-value"></span><meter min="0" aria-label="Available pond water"></meter><span class="cycles"></span>';
   const weather = document.createElement('aside');
   weather.className = 'environment-stats';
   weather.setAttribute('aria-label', 'Environment');
@@ -26,14 +27,20 @@ export function createStats(capacity: number) {
   const waterValue = panel.querySelector<HTMLElement>('.water-value')!;
   const waterMeter = panel.querySelector('meter')!;
   const cycles = panel.querySelector<HTMLElement>('.cycles')!;
+  const capacity = ponds.reduce((sum, pond) => sum + pond.capacity, 0);
   waterMeter.max = capacity;
+  const supplies = document.createElement('div'); panel.append(supplies);
+  const rows = ponds.map(pond => {
+    const row = document.createElement('div'); row.className = 'pond-supply';
+    row.textContent = pond.name; supplies.append(row); return row;
+  });
   let previous = '';
   return {
     update(s: Simulation, x: number, y: number) {
       label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
       const thirst = Math.round(s.animal.thirst);
       const heat = Math.round(s.animal.heat);
-      const water = Math.round(s.water);
+      const water = Math.round(s.ponds.reduce((sum, pond) => sum + pond.water, 0));
       const e = s.environment;
       const minutes = Math.floor(e.hour * 60);
       const clock = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -41,7 +48,7 @@ export function createStats(capacity: number) {
       const degrees = e.temperature.toFixed(1);
       const flow = e.rainfall > 0 ? `Rain filling +${e.rainfall.toFixed(2)}/s`
         : e.evaporation > 0 ? `Evaporating −${e.evaporation.toFixed(2)}/s` : 'No weather inflow or loss';
-      const key = `${heat}/${thirst}/${water}/${s.cycles}/${s.animal.behaviour}/${clock}/${e.day}/${description}/${degrees}/${flow}`;
+      const key = `${s.targetPond}/${s.ponds.map(p => Math.round(p.water)).join(",")}/${heat}/${thirst}/${water}/${s.cycles}/${s.animal.behaviour}/${clock}/${e.day}/${description}/${degrees}/${flow}`;
       if (key === previous) return;
       previous = key;
       document.body.classList.toggle('night', e.daylight < 0.2);
@@ -53,8 +60,9 @@ export function createStats(capacity: number) {
       thirstMeter.value = thirst;
       heatValue.textContent = `${heat}%`;
       heatMeter.value = heat;
-      waterValue.textContent = `${water} / ${capacity} water · ${flow}`;
+      waterValue.textContent = `${water} / ${capacity} total water · ${flow} per pond`;
       waterMeter.value = water;
+      rows.forEach((row, i) => { row.textContent = `${ponds[i].name}: ${Math.round(s.ponds[i].water)} / ${ponds[i].capacity}${i === s.targetPond ? ' · selected' : ''}`; });
       cycles.textContent = `${s.cycles} drinking cycles completed`;
     },
     dispose() { label.remove(); panel.remove(); weather.remove(); document.body.classList.remove('night'); },

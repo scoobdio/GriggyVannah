@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clearTemperature, environmentAt, environmentConfig as e } from '../src/environment.ts';
-import { createSimulation, simulationConfig as c, stepSimulation } from '../src/simulation.ts';
+import { createSimulation, simulationConfig as defaults, stepSimulation } from '../src/simulation.ts';
+const c = { ...defaults, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
 
 test('temperature trough is 02:30, peak is 14:00, continuous at midnight', () => {
@@ -44,15 +45,15 @@ test('evaporation is slow, peaks at 14:00 and stops at night and in rain', () =>
   assert.equal(wet.rainfall, 4);
 });
 test('weather water balance is independent of drinking and capped at both ends', () => {
-  const dry = { ...c, thirstRate: 0, pond: { ...c.pond, initialWater: 50 },
+  const dry = { ...c, thirstRate: 0, ponds: [{ ...c.ponds[0], initialWater: 50 }],
     environment: { ...e, startHour: 14 } };
   const s = createSimulation(dry);
   stepSimulation(s, dry, 1/60);
-  near(s.water, 50 - s.environment.evaporation / 60);
-  s.water = 0; stepSimulation(s, dry, 1/60); assert.equal(s.water, 0);
+  near(s.ponds[0].water, 50 - s.environment.evaporation / 60);
+  s.ponds[0].water = 0; stepSimulation(s, dry, 1/60); assert.equal(s.ponds[0].water, 0);
   const wet = { ...dry, environment: { ...e, clearSeconds: 0, transitionSeconds: 0 } };
-  stepSimulation(s, wet, 1/60); near(s.water, 4/60);
-  s.water = 99.99; stepSimulation(s, wet, 1/60); assert.equal(s.water, 100);
+  stepSimulation(s, wet, 1/60); near(s.ponds[0].water, 4/60);
+  s.ponds[0].water = 99.99; stepSimulation(s, wet, 1/60); assert.equal(s.ponds[0].water, 100);
 });
 test('six simulated days preserve bounds and recover from dry spells', () => {
   const s = createSimulation(c); let waited = false; let resumed = false;
@@ -60,7 +61,7 @@ test('six simulated days preserve bounds and recover from dry spells', () => {
     stepSimulation(s, c, 1/60);
     if (s.animal.behaviour === 'Waiting for water') waited = true;
     if (waited && s.cycles > 0) resumed = true;
-    assert.ok(s.water >= 0 && s.water <= 100);
+    assert.ok(s.ponds[0].water >= 0 && s.ponds[0].water <= 100);
     assert.ok(s.animal.thirst >= 0 && s.animal.thirst <= 100);
     assert.ok(s.environment.temperature >= e.minimumTemperature - e.rainCooling);
     assert.ok(s.environment.temperature <= e.maximumTemperature);

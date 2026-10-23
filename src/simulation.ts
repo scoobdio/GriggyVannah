@@ -1,3 +1,5 @@
+import { pondConfigs, worldConfig } from './config.ts';
+import type { PondConfig } from './config.ts';
 import { shadeAreas } from './habitat.ts';
 import type { ShadeArea } from './habitat.ts';
 import { environmentAt, environmentConfig } from './environment.ts';
@@ -5,8 +7,10 @@ import type { Environment, EnvironmentConfig } from './environment.ts';
 
 export interface Point { x: number; z: number }
 export interface SimulationConfig {
-  pond: Point & { radius: number; capacity: number; initialWater: number; accessible: boolean };
+  ponds: PondConfig[];
   home: Point;
+  ground: { width: number; depth: number };
+  roaming: boolean;
   shades: ShadeArea[];
   heat: { seek: number; comfortable: number; gain: number; cooling: number; urgentThirst: number };
   speed: number;
@@ -20,10 +24,14 @@ export interface SimulationConfig {
   edgeOffset: number;
   retrySeconds: number;
 }
-export type Behaviour = 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
+export type Behaviour = 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
   animal: Point & { thirst: number; heat: number; behaviour: Behaviour };
-  water: number;
+  ponds: { water: number }[];
+  targetPond: number;
+  waterRoute: Point[];
+  travelRoute: Point[];
+  roamSequence: number;
   environment: Environment;
   time: number;
   cycles: number;
@@ -33,7 +41,8 @@ export interface Simulation {
   shadeRetryAt: number;
 }
 export const simulationConfig: SimulationConfig = {
-  pond: { x: 3, z: 1, radius: 3.1, capacity: 100, initialWater: 0, accessible: true },
+  ponds: pondConfigs,
+  ground: worldConfig.grassland, roaming: true,
   shades: shadeAreas,
   heat: { seek: 60, comfortable: 25, gain: 4, cooling: 5, urgentThirst: 85 },
   home: { x: -7, z: -4 }, speed: 2.4, thirstRate: 3,
@@ -43,17 +52,13 @@ export const simulationConfig: SimulationConfig = {
 };
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
-  const dx = c.home.x - c.pond.x;
-  const dz = c.home.z - c.pond.z;
-  const length = Math.hypot(dx, dz);
-  const radius = c.pond.radius + c.edgeOffset;
   return {
     animal: { ...c.home, thirst: 55, heat: 20, behaviour: 'Resting' },
-    water: Math.max(0, Math.min(c.pond.capacity, c.pond.initialWater)),
+    ponds: c.ponds.map(p => ({ water: Math.max(0, Math.min(p.capacity, p.initialWater)) })),
+    targetPond: 0, waterRoute: [], travelRoute: [], roamSequence: 0,
     environment: environmentAt(0, c.environment),
     time: 0, cycles: 0, retryAt: 0, shadeId: null, shadeRetryAt: 0,
-    edge: { x: c.pond.x + (length ? dx / length : -1) * radius,
-      z: c.pond.z + (length ? dz / length : 0) * radius },
+    edge: { ...c.home },
   };
 }
 export function moveTowards(position: Point, target: Point, amount: number) {
@@ -64,15 +69,17 @@ export function moveTowards(position: Point, target: Point, amount: number) {
   position.z += (target.z - position.z) * fraction;
 }
 export function inDrinkingRange(s: Simulation, c: SimulationConfig) {
-  const radius = distance(s.animal, c.pond);
-  return c.pond.accessible && radius >= c.pond.radius && radius <= c.pond.radius + c.drinkingRange;
+  const pond = c.ponds[s.targetPond];
+  if (!pond) return false;
+  const radius = distance(s.animal, pond);
+  return pond.accessible && radius >= pond.radius && radius <= pond.radius + c.drinkingRange;
 }
 // Water units are separate from thirst points. Return the amount actually consumed.
 export function drink(s: Simulation, c: SimulationConfig, requested: number) {
   if (!Number.isFinite(requested) || requested <= 0 || !inDrinkingRange(s, c)) return 0;
-  const consumed = Math.min(requested, s.water,
+  const consumed = Math.min(requested, s.ponds[s.targetPond].water,
     Math.max(0, s.animal.thirst - c.satisfiedThreshold) / c.hydrationPerWater);
-  s.water = Math.max(0, s.water - consumed);
+  s.ponds[s.targetPond].water = Math.max(0, s.ponds[s.targetPond].water - consumed);
   s.animal.thirst = Math.max(0, s.animal.thirst - consumed * c.hydrationPerWater);
   return consumed;
 }
@@ -87,16 +94,95 @@ function segmentDistance(point: Point, a: Point, b: Point) {
   return distance(point, { x: a.x + t * dx, z: a.z + t * dz });
 }
 export function clearRoute(a: Point, b: Point, c: SimulationConfig) {
-  return segmentDistance(c.pond, a, b) >= c.pond.radius + 0.4 &&
+  return c.ponds.every(pond => segmentDistance(pond, a, b) >= pond.radius + 0.4) &&
     c.shades.every(tree => segmentDistance(tree, a, b) >= 0.65);
 }
 export const shadeSpot = (shade: ShadeArea): Point => ({ x: shade.x - shade.radius * 0.65, z: shade.z });
+export function insideGround(p: Point, c: SimulationConfig) {
+  return Math.abs(p.x) <= c.ground.width / 2 - 1 && Math.abs(p.z) <= c.ground.depth / 2 - 1;
+}
+// A small visibility graph is built only when choosing a destination, never per frame.
+// Expanded rings leave clearance even along chords between adjacent waypoints.
+export function planRoute(start: Point, target: Point, c: SimulationConfig): Point[] | undefined {
+  if (!insideGround(start, c) || !insideGround(target, c)) return;
+  if (clearRoute(start, target, c)) return [{ ...target }];
+  const nodes: Point[] = [start, target];
+  const obstacles = [...c.ponds.map(p => ({ ...p, clearance: p.radius + 0.4 })),
+    ...c.shades.map(p => ({ ...p, clearance: 0.65 }))];
+  for (const o of obstacles) for (let i = 0; i < 12; i++) {
+    const radius = (o.clearance + 0.1) / Math.cos(Math.PI / 12);
+    const p = { x: o.x + Math.cos(i * Math.PI / 6) * radius,
+      z: o.z + Math.sin(i * Math.PI / 6) * radius };
+    if (insideGround(p, c) && clearRoute(p, p, c)) nodes.push(p);
+  }
+  const costs = nodes.map(() => Infinity), previous = nodes.map(() => -1);
+  const visited = new Set<number>(); costs[0] = 0;
+  for (;;) {
+    let current = -1;
+    for (let i = 0; i < nodes.length; i++)
+      if (!visited.has(i) && (current < 0 || costs[i] < costs[current])) current = i;
+    if (current < 0 || !Number.isFinite(costs[current])) return;
+    if (current === 1) break;
+    visited.add(current);
+    for (let i = 0; i < nodes.length; i++) {
+      const cost = costs[current] + distance(nodes[current], nodes[i]);
+      if (!visited.has(i) && cost < costs[i] && clearRoute(nodes[current], nodes[i], c)) {
+        costs[i] = cost; previous[i] = current;
+      }
+    }
+  }
+  const route: Point[] = [];
+  for (let i = 1; i !== 0; i = previous[i]) route.unshift({ ...nodes[i] });
+  return route;
+}
+function followRoute(s: Simulation, route: Point[], c: SimulationConfig, dt: number) {
+  if (!route.length) return true;
+  moveTowards(s.animal, route[0], c.speed * dt);
+  if (distance(s.animal, route[0]) < 1e-8) route.shift();
+  return route.length === 0;
+}
 function chooseShade(s: Simulation, c: SimulationConfig) {
-  return c.shades.filter(shade => {
-    const spot = shadeSpot(shade);
-    return shade.accessible && clearRoute(s.animal, spot, c) &&
-      clearRoute(spot, s.edge, c) && clearRoute(spot, c.home, c);
-  }).sort((a,b) => distance(s.animal, shadeSpot(a)) - distance(s.animal, shadeSpot(b)))[0];
+  for (const shade of [...c.shades].sort((a,b) => distance(s.animal,a)-distance(s.animal,b))) {
+    if (!shade.accessible) continue;
+    const route = planRoute(s.animal, shadeSpot(shade), c);
+    if (route) { s.travelRoute = route; return shade; }
+  }
+}
+function beginRoaming(s: Simulation, c: SimulationConfig) {
+  // Deterministic low-discrepancy destinations span the whole ground, with no home tether.
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const n = ++s.roamSequence;
+    const target = { x: ((n * 0.61803398875) % 1 - 0.5) * (c.ground.width - 2),
+      z: ((n * 0.41421356237) % 1 - 0.5) * (c.ground.depth - 2) };
+    const route = planRoute(s.animal, target, c);
+    if (route) { s.travelRoute = route; s.animal.behaviour = 'Roaming'; return; }
+  }
+  s.retryAt = s.time + c.retrySeconds;
+}
+
+// Check several bank points, keeping routes out of every pond and tree trunk.
+export function findWater(s: Simulation, c: SimulationConfig) {
+  let best: { index: number; edge: Point; route: Point[]; length: number } | undefined;
+  c.ponds.forEach((pond, index) => {
+    if (!pond.accessible || s.ponds[index].water < 0.01) return;
+    for (let i = 0; i < 24; i++) {
+      const angle = i / 24 * Math.PI * 2;
+      const edge = { x: pond.x + Math.cos(angle) * (pond.radius + c.edgeOffset),
+        z: pond.z + Math.sin(angle) * (pond.radius + c.edgeOffset) };
+      const route = planRoute(s.animal, edge, c);
+      if (!route) continue;
+      let length = 0, previous = s.animal as Point;
+      for (const point of route) { length += distance(previous, point); previous = point; }
+      if (!best || length < best.length) best = { index, edge, route, length };
+    }
+  });
+  return best;
+}
+function selectWater(s: Simulation, c: SimulationConfig) {
+  const choice = findWater(s, c);
+  if (!choice) return false;
+  s.targetPond = choice.index; s.edge = choice.edge; s.waterRoute = choice.route;
+  return true;
 }
 
 export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
@@ -104,7 +190,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
   s.time += dt;
   s.environment = environmentAt(s.time, c.environment);
   const weatherChange = (s.environment.rainfall - s.environment.evaporation) * dt;
-  s.water = Math.max(0, Math.min(c.pond.capacity, s.water + weatherChange));
+  s.ponds.forEach((pond, i) => { pond.water = Math.max(0, Math.min(c.ponds[i].capacity, pond.water + weatherChange)); });
   const a = s.animal;
   a.thirst = Math.min(100, a.thirst + c.thirstRate * dt);
   const shaded = isShaded(a, c);
@@ -112,26 +198,22 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
     s.environment.daylight * (1 - s.environment.rain);
   const heatChange = shaded ? -c.heat.cooling : exposure * c.heat.gain - (1-exposure) * 1.5;
   a.heat = Math.max(0, Math.min(100, a.heat + heatChange * dt));
-  const wantsWater = a.thirst >= c.seekThreshold && c.pond.accessible && s.water >= 5;
+  const wantsWater = a.thirst >= c.seekThreshold && c.ponds.some((p,i) => p.accessible && s.ponds[i].water >= 5);
   const urgentWater = a.thirst >= c.heat.urgentThirst && wantsWater;
   const shadeBehaviour = a.behaviour === 'Seeking shade' || a.behaviour === 'Cooling in shade';
   if (shadeBehaviour && urgentWater) {
-    a.behaviour = 'Seeking water';
+    a.behaviour = selectWater(s, c) ? 'Seeking water' : 'Waiting for water';
     s.shadeId = null;
   } else if (shadeBehaviour) {
     const shade = c.shades.find(item => item.id === s.shadeId && item.accessible);
     if (!shade || a.heat <= c.heat.comfortable || s.environment.rain > 0.1 || exposure <= 0) {
       s.shadeId = null;
-      a.behaviour = wantsWater ? 'Seeking water' : 'Returning';
+      a.behaviour = wantsWater && selectWater(s, c) ? 'Seeking water' : c.roaming ? 'Resting' : 'Returning';
+      s.travelRoute = a.behaviour === 'Returning' ? planRoute(a, c.home, c) ?? [] : [];
     } else {
-      const spot = shadeSpot(shade);
-      if (!clearRoute(a, spot, c)) {
-        a.behaviour = 'Resting'; s.shadeId = null; s.shadeRetryAt = s.time + c.retrySeconds;
-      } else {
-        moveTowards(a, spot, c.speed * dt);
-        a.behaviour = distance(a, spot) < 1e-8 ? 'Cooling in shade' : 'Seeking shade';
-        return;
-      }
+      const arrived = followRoute(s, s.travelRoute, c, dt);
+      a.behaviour = arrived ? 'Cooling in shade' : 'Seeking shade';
+      return;
     }
   }
   if (a.heat >= c.heat.seek && exposure > 0 && s.environment.rain <= 0.1 &&
@@ -141,28 +223,39 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
     if (shade) { s.shadeId = shade.id; a.behaviour = 'Seeking shade'; return; }
   }
   if (a.behaviour === 'Returning') {
-    moveTowards(a, c.home, c.speed * dt);
-    if (distance(a, c.home) < 1e-8) a.behaviour = 'Resting';
+    if (!s.travelRoute.length) s.travelRoute = planRoute(a, c.home, c) ?? [];
+    if (followRoute(s, s.travelRoute, c, dt)) a.behaviour = 'Resting';
     return;
   }
-  if (a.behaviour === 'Resting') {
-    if (a.thirst >= c.seekThreshold) a.behaviour = 'Seeking water';
-    else return;
+  if (a.behaviour === 'Resting' || a.behaviour === 'Roaming') {
+    if (a.thirst >= c.seekThreshold) {
+      a.behaviour = selectWater(s, c) ? 'Seeking water' : 'Waiting for water';
+      s.retryAt = s.time + c.retrySeconds;
+    }
+    else {
+      if (c.roaming && !s.travelRoute.length && s.time >= s.retryAt) beginRoaming(s, c);
+      if (a.behaviour === 'Roaming' && followRoute(s, s.travelRoute, c, dt)) a.behaviour = 'Resting';
+      return;
+    }
   }
   if (a.behaviour === 'Waiting for water') {
     if (s.time < s.retryAt) return;
     s.retryAt = s.time + c.retrySeconds;
-    if (!c.pond.accessible || s.water < Math.min(5, c.pond.capacity)) return;
+    if (!selectWater(s, c)) return;
     a.behaviour = 'Seeking water';
   }
-  if (!c.pond.accessible) {
+  if (!c.ponds[s.targetPond]?.accessible || s.ponds[s.targetPond].water < 0.01) {
     a.behaviour = 'Waiting for water';
     s.retryAt = s.time + c.retrySeconds;
     return;
   }
   if (a.behaviour === 'Seeking water') {
-    moveTowards(a, s.edge, c.speed * dt);
-    if (distance(a, s.edge) > 1e-8) return;
+    if (!s.waterRoute.length && !selectWater(s, c)) { a.behaviour = 'Waiting for water'; return; }
+    const target = s.waterRoute[0];
+    moveTowards(a, target, c.speed * dt);
+    if (distance(a, target) > 1e-8) return;
+    s.waterRoute.shift();
+    if (s.waterRoute.length) return;
     a.behaviour = 'Drinking';
     return; // Arrival and drinking happen in separate ticks.
   }
@@ -172,9 +265,10 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
   }
   drink(s, c, c.drinkRate * dt);
   if (a.thirst <= c.satisfiedThreshold + 1e-8) {
-    a.behaviour = 'Returning';
+    a.behaviour = c.roaming ? 'Resting' : 'Returning';
+    s.travelRoute = [];
     s.cycles += 1;
-  } else if (s.water < 1e-8) {
+  } else if (s.ponds[s.targetPond].water < 1e-8) {
     a.behaviour = 'Waiting for water';
     s.retryAt = s.time + c.retrySeconds;
   }

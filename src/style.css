@@ -35,3 +35,6 @@ body.night .caption, body.night .status { color: #fff8e9; }
 .animal-stats label { display: block; margin-top: 6px; }
 
 .preview-notice { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); padding:5px 10px; background:#fff8e9; border-radius:5px; font-size:11px; }
+
+.pond-supply { font-size: 10px; margin-top: 5px; }
+.water-stats { width: 245px; }

@@ -37,7 +37,7 @@ export function createSavannahScene(engine: Engine) {
 
   createGrassland(scene, worldConfig.grassland);
   createTrees(scene);
-  const pond = createPond(scene, worldConfig.pond);
-  attachEcosystem(scene, pond.water);
+  const ponds = worldConfig.ponds.map(config => createPond(scene, config));
+  attachEcosystem(scene, ponds.map(pond => pond.water));
   return scene;
 }
