@@ -4,13 +4,13 @@ import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 
-export function createHerbivore(scene: Scene) {
-  const root = new TransformNode('herbivore', scene);
-  const coat = new StandardMaterial('herbivore-coat', scene);
-  coat.diffuseColor = Color3.FromHexString('#a16b42');
+export function createHerbivore(scene: Scene, id = 0) {
+  const root = new TransformNode(`herbivore-${id}`, scene);
+  const coat = new StandardMaterial(`herbivore-${id}-coat`, scene);
+  coat.diffuseColor = Color3.FromHexString(['#a16b42','#ae8055','#8d603d'][id%3]);
   coat.specularColor = Color3.Black();
   function part(name: string, width: number, height: number, depth: number, x: number, y: number, z: number) {
-    const mesh = CreateBox(name, { width, height, depth }, scene);
+    const mesh = CreateBox(`herbivore-${id}-${name}`, { width, height, depth }, scene);
     mesh.parent = root;
     mesh.position.set(x, y, z);
     mesh.material = coat;

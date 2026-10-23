@@ -1,18 +1,17 @@
 import test from 'node:test';
+import { herdConfig } from '../src/herd.ts';
 import assert from 'node:assert/strict';
 import { createSimulation, simulationConfig as c, stepSimulation, findWater, clearRoute, drink } from '../src/simulation.ts';
 
-test('three full ponds provide at least seven days of conservative single-animal reserves', () => {
+test('full shared reserves cover seven to ten conservative rainless days for the herd', () => {
  const s=createSimulation(c);
  assert.equal(s.ponds.length,3);
- const dailyDrink = c.thirstRate/c.hydrationPerWater*c.environment.daySeconds;
- // Integral of the six-hour cosine-squared evaporation window is 3/24 of a day.
- const dailyEvap = c.environment.evaporationRate*c.environment.daySeconds*3/24;
- c.ponds.forEach((p,i) => {
-  assert.equal(s.ponds[i].water,p.capacity);
-  const days = (p.capacity-100/c.hydrationPerWater)/(dailyDrink+dailyEvap);
-  assert.ok(days>=7 && days<=10, `${p.name}: ${days} conservative days`);
- });
+ const dailyDrink = herdConfig.count*c.thirstRate/c.hydrationPerWater*c.environment.daySeconds;
+ const dailyEvap = c.ponds.length*c.environment.evaporationRate*c.environment.daySeconds*3/24;
+ c.ponds.forEach((p,i)=>assert.equal(s.ponds[i].water,p.capacity));
+ const capacity=c.ponds.reduce((sum,p)=>sum+p.capacity,0);
+ const days=(capacity-herdConfig.count*100/c.hydrationPerWater)/(dailyDrink+dailyEvap);
+ assert.ok(days>=7&&days<=10,`${days} conservative herd days`);
 });
 test('selection switches to each remaining reachable pool and never routes through a pond', () => {
  const s=createSimulation(c); const selected=[];

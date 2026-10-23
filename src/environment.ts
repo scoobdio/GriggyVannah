@@ -23,7 +23,7 @@ export const environmentConfig: EnvironmentConfig = {
   daySeconds: 300, startHour: 8,
   minimumTemperature: 18, maximumTemperature: 35, rainCooling: 4,
   clearSeconds: 80, rainSeconds: 40, transitionSeconds: 5,
-  rainfallRate: 4, evaporationRate: 0.06,
+  rainfallRate: 8, evaporationRate: 0.06,
 };
 const smooth = (x: number) => (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, x)))) / 2;
 

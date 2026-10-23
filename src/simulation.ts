@@ -30,6 +30,9 @@ export interface SimulationConfig {
 }
 export type Behaviour = 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
+  id: number;
+  roamTarget: Point | null;
+  companions: Point[];
   animal: Point & { thirst: number; hunger: number; heat: number; behaviour: Behaviour };
   ponds: { water: number }[];
   grass: GrassState[];
@@ -62,6 +65,7 @@ export const simulationConfig: SimulationConfig = {
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
   return {
+    id: 0, roamTarget: null, companions: [],
     animal: { ...c.home, thirst: 55, hunger: 40, heat: 20, behaviour: 'Resting' },
     ponds: c.ponds.map(p => ({ water: Math.max(0, Math.min(p.capacity, p.initialWater)) })),
     grass: c.grass.map(p => ({ food: p.capacity, moisture: 0.65 })),
@@ -109,6 +113,11 @@ export function clearRoute(a: Point, b: Point, c: SimulationConfig) {
     c.shades.every(tree => segmentDistance(tree, a, b) >= 0.65);
 }
 export const shadeSpot = (shade: ShadeArea): Point => ({ x: shade.x - shade.radius * 0.65, z: shade.z });
+function restingSpot(shade: ShadeArea, id: number): Point {
+  if (id === 0) return shadeSpot(shade);
+  const angle = id * 2.399963;
+  return {x:shade.x+Math.cos(angle)*shade.radius*0.65,z:shade.z+Math.sin(angle)*shade.radius*0.65};
+}
 export function insideGround(p: Point, c: SimulationConfig) {
   return Math.abs(p.x) <= c.ground.width / 2 - 1 && Math.abs(p.z) <= c.ground.depth / 2 - 1;
 }
@@ -155,11 +164,15 @@ function followRoute(s: Simulation, route: Point[], c: SimulationConfig, dt: num
 function chooseShade(s: Simulation, c: SimulationConfig) {
   for (const shade of [...c.shades].sort((a,b) => distance(s.animal,a)-distance(s.animal,b))) {
     if (!shade.accessible) continue;
-    const route = planRoute(s.animal, shadeSpot(shade), c);
+    const route = planRoute(s.animal, restingSpot(shade,s.id), c);
     if (route) { s.travelRoute = route; return shade; }
   }
 }
 function beginRoaming(s: Simulation, c: SimulationConfig) {
+  if (s.roamTarget) {
+    const route = planRoute(s.animal,s.roamTarget,c);
+    if (route) { s.travelRoute = route; s.animal.behaviour = 'Roaming'; return; }
+  }
   // Deterministic low-discrepancy destinations span the whole ground, with no home tether.
   for (let attempt = 0; attempt < 12; attempt++) {
     const n = ++s.roamSequence;
@@ -184,6 +197,7 @@ export function findWater(s: Simulation, c: SimulationConfig) {
       if (!route) continue;
       let length = 0, previous = s.animal as Point;
       for (const point of route) { length += distance(previous, point); previous = point; }
+      length += s.companions.reduce((cost,p) => cost + Math.max(0,2-distance(p,edge))*5,0);
       if (!best || length < best.length) best = { index, edge, route, length };
     }
   });
@@ -211,19 +225,23 @@ function selectGrass(s: Simulation, c: SimulationConfig) {
     .filter(({patch,index}) => patch.accessible && s.grass[index].food >= 1)
     .sort((a,b) => distance(s.animal,a.patch)-distance(s.animal,b.patch));
   for (const { patch,index } of candidates) {
-    const route = planRoute(s.animal, patch, c);
+    const angle = s.id * 2.399963;
+    const target = s.id === 0 ? patch : {x:patch.x+Math.cos(angle)*patch.radius*0.55,z:patch.z+Math.sin(angle)*patch.radius*0.55};
+    const route = planRoute(s.animal, target, c);
     if (route) { s.targetGrass = index; s.travelRoute = route; return true; }
   }
   return false;
 }
 
-export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
+export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, updateResources = true) {
   if (!Number.isFinite(dt) || dt <= 0) return;
   s.time += dt;
   s.environment = environmentAt(s.time, c.environment);
+  if (updateResources) {
   const weatherChange = (s.environment.rainfall - s.environment.evaporation) * dt;
   s.ponds.forEach((pond, i) => { pond.water = Math.max(0, Math.min(c.ponds[i].capacity, pond.water + weatherChange)); });
   s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt));
+  }
   const a = s.animal;
   a.hunger = Math.min(100, a.hunger + c.hunger.rate * dt);
   a.thirst = Math.min(100, a.thirst + c.thirstRate * dt);
