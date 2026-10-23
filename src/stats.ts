@@ -10,9 +10,15 @@ export function createStats(ponds: PondConfig[]) {
   label.append(heatLabel);
   const heatValue = heatLabel.querySelector<HTMLElement>('.heat-value')!;
   const heatMeter = heatLabel.querySelector('meter')!;
+  const hungerLabel = document.createElement('label');
+  hungerLabel.innerHTML = 'Hunger <span class="hunger-value"></span><meter min="0" max="100" low="35" high="65" optimum="0" aria-label="Hunger: higher means hungrier"></meter>';
+  label.append(hungerLabel);
+  const hungerValue = hungerLabel.querySelector('span')!;
+  const hungerMeter = hungerLabel.querySelector('meter')!;
   const panel = document.createElement('aside');
   panel.className = 'water-stats';
   panel.innerHTML = '<strong>Watering holes</strong><span class="water-value"></span><meter min="0" aria-label="Available pond water"></meter><span class="cycles"></span>';
+  const grassSupply = document.createElement('span'); grassSupply.className = 'grass-supply'; panel.append(grassSupply);
   const weather = document.createElement('aside');
   weather.className = 'environment-stats';
   weather.setAttribute('aria-label', 'Environment');
@@ -39,6 +45,8 @@ export function createStats(ponds: PondConfig[]) {
     update(s: Simulation, x: number, y: number) {
       label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
       const thirst = Math.round(s.animal.thirst);
+      const hunger = Math.round(s.animal.hunger);
+      const food = Math.round(s.grass.reduce((sum,patch) => sum+patch.food,0));
       const heat = Math.round(s.animal.heat);
       const water = Math.round(s.ponds.reduce((sum, pond) => sum + pond.water, 0));
       const e = s.environment;
@@ -48,7 +56,7 @@ export function createStats(ponds: PondConfig[]) {
       const degrees = e.temperature.toFixed(1);
       const flow = e.rainfall > 0 ? `Rain filling +${e.rainfall.toFixed(2)}/s`
         : e.evaporation > 0 ? `Evaporating −${e.evaporation.toFixed(2)}/s` : 'No weather inflow or loss';
-      const key = `${s.targetPond}/${s.ponds.map(p => Math.round(p.water)).join(",")}/${heat}/${thirst}/${water}/${s.cycles}/${s.animal.behaviour}/${clock}/${e.day}/${description}/${degrees}/${flow}`;
+      const key = `${hunger}/${food}/${s.targetPond}/${s.ponds.map(p => Math.round(p.water)).join(",")}/${heat}/${thirst}/${water}/${s.cycles}/${s.animal.behaviour}/${clock}/${e.day}/${description}/${degrees}/${flow}`;
       if (key === previous) return;
       previous = key;
       document.body.classList.toggle('night', e.daylight < 0.2);
@@ -58,6 +66,8 @@ export function createStats(ponds: PondConfig[]) {
       behaviour.textContent = s.animal.behaviour;
       thirstValue.textContent = `${thirst}%`;
       thirstMeter.value = thirst;
+      hungerValue.textContent = `${hunger}%`; hungerMeter.value = hunger;
+      grassSupply.textContent = `Grass: ${food} food available`;
       heatValue.textContent = `${heat}%`;
       heatMeter.value = heat;
       waterValue.textContent = `${water} / ${capacity} total water · ${flow} per pond`;

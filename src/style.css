@@ -38,3 +38,6 @@ body.night .caption, body.night .status { color: #fff8e9; }
 
 .pond-supply { font-size: 10px; margin-top: 5px; }
 .water-stats { width: 245px; }
+
+.hunger-value { float: right; }
+.grass-supply { display: block; margin-top: 7px; font-size: 10px; }

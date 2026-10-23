@@ -10,7 +10,7 @@ The intended stack is TypeScript, Vite and Babylon.js. Start with a browser appl
 
 The first deliverable is a small autonomous scene: grassland, one watering hole and one placeholder herbivore that repeatedly becomes thirsty, travels to water and drinks while water replenishes. Make this cycle reliable and legible before expanding the ecosystem.
 
-The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, temperature and rain now affect lighting and pond water. Animal heat and shade seeking are implemented: in hot sunshine the herbivore seeks tree shade and rests while cooling, with rain reducing exposure. Other ecological behaviours in this paragraph are ambitions, not current features.
+The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, temperature and rain now affect lighting and pond water. Animal heat and shade seeking are implemented: in hot sunshine the herbivore seeks tree shade and rests while cooling, with rain reducing exposure. Hunger-driven grazing and rain-dependent grass patches are also implemented. Grouping, fleeing, hunting, reproduction and population dynamics remain ambitions.
 
 ## Current implementation and evidence
 
@@ -29,7 +29,7 @@ The original checkout contained only this README. A minimal browser application 
 | Day/night, temperature and weather | `src/environment.ts`, `src/weatherView.ts` | Deterministic environmental rules; smooth lighting and lightweight rain visuals. |
 | Overhead thirst/behaviour and pond supply indicators | `src/stats.ts`, `src/style.css` | DOM meters follow the animal; pond panel includes completed cycles. |
 
-Three independently tracked ponds start full and fill through rain and slowly evaporate during clear peak-heat hours. One block-built placeholder herbivore now seeks water, drinks, waits for replenishment when necessary, and roams between needs across the ground. Thirst, heat and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
+Three independently tracked ponds start full and fill through rain and slowly evaporate during clear peak-heat hours. One block-built placeholder herbivore now seeks water, drinks, waits for replenishment when necessary, and roams between needs across the ground. Thirst, heat, hunger, grass food/moisture and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
 
 Baseline validation on 22 October 2026 (before the autonomous milestone):
 
@@ -113,6 +113,8 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/scene.ts`: fixed overview camera, lighting and world assembly.
 - `src/world.ts`: reusable grassland and pond mesh/material creation functions.
 - `src/config.ts`: visual dimensions, pond placement and pixel-density cap.
+- `src/grass.ts`: patch positions, food/moisture state and weather-driven growth/withering.
+- `src/grassView.ts`: reusable patch beds and merged grass tufts, coloured/scaled by stock.
 - `src/environment.ts`: simulated time, temperature curve, rain schedule and environmental water rates.
 - `src/weatherView.ts`: lighting, sky updates and a reusable rain line-system mesh.
 - `src/sky.ts`: procedural sky dome shader and distant landscape.
@@ -121,7 +123,7 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/ecosystem.ts`: connects simulation state to meshes and overhead DOM stats.
 - `src/animal.ts`: reusable placeholder herbivore creation.
 - `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel, environmental readout and display styling.
-- `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
+- `tests/grass.test.mjs`, `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
 - `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
 
 Meshes, materials and stat elements are created once. A fixed 1/60-second simulation step runs independently of rendering; the scene displays the resulting state. Shade footprints use simple ground meshes, independently of the sky and lighting; there are no dynamic shadow maps, textures, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
@@ -191,7 +193,7 @@ Each stage should remain small enough to demonstrate and validate independently.
 | --- | --- | --- |
 | 0. Runnable baseline (implemented) | Grassland and a pond, a fixed overview camera and resize handling. | Verify actual setup/build commands and inspect browser startup, canvas resize and console errors. |
 | 1. Autonomous drinking (implemented) | One herbivore completes the demonstration above. | Focused timing, movement, bounds and accounting checks; repeated browser cycles and empty-water recovery. |
-| 2. Grazing, hunger and resting | Add one need at a time; an animal switches sensibly between food, water and rest. | Check resource consumption, need bounds and priority conflicts; observe transitions without rapid switching. |
+| 2. Grazing and hunger (implemented); fatigue/rest later | An animal seeks edible patches, consumes food and resumes activity; rain regrows grass and prolonged dryness withers it. A separate fatigue/sleep need remains planned. | Check resource consumption, need bounds and priority conflicts; observe transitions without rapid switching. |
 | 3a. Day/night, weather and pond balance (implemented ahead of grazing) | A simulated day changes daylight and temperature; rain fills the pond and peak-hour sun slowly evaporates water. | Check clock wraparound and equivalent time progression across render rates; observe a complete day/night transition. |
 | 3b. Animal heat and tree shade (implemented) | Simple trees provide accessible shade; an animal seeks and rests in shade during hot peak daytime sunshine, with rain reducing the need for sun shelter. | Check sunny midday, rain, night, shade boundaries and unavailable shade; observe travel, arrival, cooling and return to other activities. |
 | 4. Multiple animals and local perception | Several animals choose nearby resources and interact visibly; add simple grouping only after selection works. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
@@ -217,6 +219,18 @@ Defaults are explicit in `src/environment.ts` and use simulated elapsed seconds,
 
 Configuration requires a positive day length, non-negative clear/rain durations with a positive total period, non-negative transition/rate values, and ordered minimum/maximum temperatures. Seasons and random weather are not implemented.
 
+### Edible grass and hunger — implemented
+
+Five patches in `src/grass.ts` start full, with 920 food units in total. Patch food is distinct from moisture (0–1) and from the rendered grass. Patch beds become browner and tufts shrink as supplies/moisture fall; rain can regrow even completely eaten patches. The surrounding plain and decorative bushes are not edible resources.
+
+- Moisture starts at 0.65 and falls by 0.0008 per simulated second without rain. Below 0.2, food slowly withers at 0.035 units per second. The initial moisture buffer lasts about 1.9 simulated days without rain; fully wet soil lasts about 3.3 days before withering begins. These are arithmetic estimates, not multi-day test results.
+- Full-strength rain restores 0.025 moisture and 0.6 food per second per patch. Rates scale with rain intensity; drying and withering scale with its absence. Food cannot exceed patch capacity or fall below zero. All values are provisional gameplay tuning.
+- Hunger starts at 40, rises by 0.7 points per second and is bounded to 0–100. At 55 the animal seeks a nearby reachable stocked patch; grazing consumes up to four food units per second and restores four hunger points per unit, stopping at 15. Eating happens only inside the selected accessible patch. An overhead hunger meter and total grass food readout make consumption visible.
+- Travel uses existing obstacle-aware routes. Drinking and heat management take priority; thirst reaching its normal threshold interrupts grazing. Empty or inaccessible food produces “Waiting for grass” with bounded retries; rain regrowth can resume feeding. Active water waiting remains the priority when both food and water are unavailable.
+- Hunger does not yet cause injury or death. Fatigue, sleeping, multiple-animal competition and a sustainable herd balance remain future work.
+
+Verification: five focused grass tests, five pond tests, three navigation tests and selected shade regressions passed. Chrome showed the animal grazing, hunger decreasing and food consumption with no captured console errors. Production build/type checking passed with the existing bundle warning. Only short spot checks were run; no multi-day or Pi performance test was performed.
+
 ### Gathering-area water reserves
 
 The target is no routine shortage, with drought becoming a concern only after roughly 7–10 rainless simulated days. With the current single herbivore, thirst can demand at most `3 / 4 × 300 = 225` water units per simulated day. Clear-sky evaporation integrates to `0.06 × 300 × 3 / 24 = 2.25` units per pond per day. Allowing another 25 units for starting thirst gives conservative reserves of about **9.6 days for Central pool and 8.7 days for each smaller pool**, even if one pond supplies all consumption. Switching among ponds extends total survival beyond that interval; this is not a scripted depletion deadline.
@@ -225,7 +239,7 @@ This estimate is an arithmetic bound, not a multi-day test result. Rain remains 
 
 ### Animal heat and tree shade — implemented
 
-Four scattered stylised acacia trees of varied height (2.7–7.2 units) and canopy radius (2.0–6.0 units) share their positions and canopy radii between visuals and simulation (`src/habitat.ts`). One continuous 240 × 240 grassland now covers the visible ground, replacing the contrasting central square and separate surrounding plane. Sparse trees and low bushes frame three watering holes with open banks and gathering space. The west acacia is a larger landmark on the left side, with a six-unit shade radius for future herds. Additional low scrub fills the left foreground, while canopy footprints and pond banks stay clear. There are still four trees; multi-animal shade occupancy and competition are not implemented yet. Bushes are passable decorative scrub; tree trunks and pond interiors constrain routes. Distant hills remain scenery. The herbivore now roams across the full ground (with a one-unit edge margin), interrupted by thirst and heat needs. Deterministic destinations span the ground; the current rapid thirst cycle naturally keeps most activity nearer water. The fixed camera still shows only part of the habitat, so animals can travel out of view.
+Four scattered stylised acacia trees of varied height (2.7–7.2 units) and canopy radius (2.0–6.0 units) share their positions and canopy radii between visuals and simulation (`src/habitat.ts`). One continuous 240 × 240 grassland now covers the visible ground, replacing the contrasting central square and separate surrounding plane. Sparse trees and low bushes frame three watering holes with open banks and gathering space. The west acacia is a larger landmark on the left side, with a six-unit shade radius for future herds. Additional low scrub fills the left foreground, while canopy footprints and pond banks stay clear. There are still four trees; multi-animal shade occupancy and competition are not implemented yet. Bushes are passable decorative scrub; tree trunks and pond interiors constrain routes. Distant hills remain scenery. The herbivore now roams across the full ground (with a one-unit edge margin), interrupted by thirst, heat and hunger needs. Deterministic destinations span the ground; the current rapid thirst cycle naturally keeps most activity nearer water. The fixed camera still shows only part of the habitat, so animals can travel out of view.
 
 - Heat is a bounded 0–100 stat, starting at 20. Direct exposure scales with ambient temperature above 24 °C, daylight and absence of rain. Maximum configured heating is 4 points per simulated second; low exposure permits passive cooling.
 - Seek shade at heat 60; resume other activities at 25. Separate thresholds prevent rapid switching. Shade cools at 5 points per second. Rain and night reduce exposure and end unnecessary shade-seeking.
@@ -233,7 +247,7 @@ Four scattered stylised acacia trees of varied height (2.7–7.2 units) and cano
 - At the resting spot, the herbivore lowers its body to suggest sitting and the label reads “Cooling in shade.” The overhead heat meter makes recovery visible.
 - Thirst at 85 or above interrupts cooling when reachable pond water is available. An empty or inaccessible pond does not prevent cooling; drinking resumes when supply returns. Active drinking finishes before seeking shade.
 - If no safe shade is available, retry at a bounded interval while continuing existing behaviour. Trees and their footprints are static; moving/removing trees and complex terrain navigation remain outside this increment.
-- Heat does not yet increase thirst or cause injury/death. Hunger remains a separate future need. The larger, initially full reserves described below replace the earlier small-pond defaults.
+- Heat does not yet increase thirst or cause injury/death. Hunger and grazing are implemented as a separate need. The larger, initially full reserves described below replace the earlier small-pond defaults.
 
 ### Sky and backdrop — implemented
 
@@ -241,7 +255,7 @@ A procedural sky dome blends daylight, warm dawn/dusk horizons and night colours
 
 The camera remains fixed and input-free, at a lower angle to include the horizon. A continuous ground plane and low-poly distant hills replace the isolated floating-plane appearance. The sky uses one shader/material and dome mesh; it adds no image assets, libraries or cloud services. Pixel shading still needs measurement on the actual Pi.
 
-For reproducible development-only browser inspection, append `?preview=heat`, `?preview=night` or `?preview=rain` to the Vite URL. Heat starts at 14:00 with a hot animal, night at 22:00, and rain at 14:00 with full rain intensity. Each shows an explicit development-preview notice. Remove the query to restore the normal cycle. Production builds ignore these presets.
+For reproducible development-only browser inspection, append `?preview=heat`, `?preview=night`, `?preview=rain` or `?preview=grazing` to the Vite URL. Heat starts at 14:00 with a hot animal, night at 22:00, and rain at 14:00 with full rain intensity. Grazing starts with high hunger and low thirst for a quick feeding check. Each shows an explicit development-preview notice. Remove the query to restore the normal cycle. Production builds ignore these presets.
 
 ## Performance and reliability
 
@@ -287,4 +301,4 @@ Recommendations below are starting points for discussion, not approved commitmen
 - Use Chrome for automated browser verification; Safari automation is not required. The Raspberry Pi browser remains the eventual hardware target.
 - Include a suggested git commit message at the end of each completed task; do not commit unless asked.
 
-Next, add grazing and hunger as a separate small milestone before multiple animals. Trees, shade and the sky are implemented; further habitat polish should preserve readable behaviour. The app remains local-only; no hosting, deployment, push or commit is part of this increment.
+Next, add a small group of herbivores and validate shared food, water and shade access before scaling populations. Trees, shade and the sky are implemented; further habitat polish should preserve readable behaviour. The app remains local-only; no hosting, deployment, push or commit is part of this increment.

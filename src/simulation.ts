@@ -1,3 +1,5 @@
+import { grassPatches, updateGrass } from './grass.ts';
+import type { GrassPatch, GrassState } from './grass.ts';
 import { pondConfigs, worldConfig } from './config.ts';
 import type { PondConfig } from './config.ts';
 import { shadeAreas } from './habitat.ts';
@@ -8,6 +10,8 @@ import type { Environment, EnvironmentConfig } from './environment.ts';
 export interface Point { x: number; z: number }
 export interface SimulationConfig {
   ponds: PondConfig[];
+  grass: GrassPatch[];
+  hunger: { rate: number; seek: number; satisfied: number; eatRate: number; nutrition: number };
   home: Point;
   ground: { width: number; depth: number };
   roaming: boolean;
@@ -24,10 +28,13 @@ export interface SimulationConfig {
   edgeOffset: number;
   retrySeconds: number;
 }
-export type Behaviour = 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
+export type Behaviour = 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
-  animal: Point & { thirst: number; heat: number; behaviour: Behaviour };
+  animal: Point & { thirst: number; hunger: number; heat: number; behaviour: Behaviour };
   ponds: { water: number }[];
+  grass: GrassState[];
+  targetGrass: number;
+  grassRetryAt: number;
   targetPond: number;
   waterRoute: Point[];
   travelRoute: Point[];
@@ -42,6 +49,8 @@ export interface Simulation {
 }
 export const simulationConfig: SimulationConfig = {
   ponds: pondConfigs,
+  grass: grassPatches,
+  hunger: { rate: 0.7, seek: 55, satisfied: 15, eatRate: 4, nutrition: 4 },
   ground: worldConfig.grassland, roaming: true,
   shades: shadeAreas,
   heat: { seek: 60, comfortable: 25, gain: 4, cooling: 5, urgentThirst: 85 },
@@ -53,8 +62,10 @@ export const simulationConfig: SimulationConfig = {
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
   return {
-    animal: { ...c.home, thirst: 55, heat: 20, behaviour: 'Resting' },
+    animal: { ...c.home, thirst: 55, hunger: 40, heat: 20, behaviour: 'Resting' },
     ponds: c.ponds.map(p => ({ water: Math.max(0, Math.min(p.capacity, p.initialWater)) })),
+    grass: c.grass.map(p => ({ food: p.capacity, moisture: 0.65 })),
+    targetGrass: -1, grassRetryAt: 0,
     targetPond: 0, waterRoute: [], travelRoute: [], roamSequence: 0,
     environment: environmentAt(0, c.environment),
     time: 0, cycles: 0, retryAt: 0, shadeId: null, shadeRetryAt: 0,
@@ -185,13 +196,36 @@ function selectWater(s: Simulation, c: SimulationConfig) {
   return true;
 }
 
+export function graze(s: Simulation, c: SimulationConfig, requested: number) {
+  const patch = c.grass[s.targetGrass], stock = s.grass[s.targetGrass];
+  if (!patch?.accessible || !stock || !Number.isFinite(requested) || requested <= 0 ||
+      distance(s.animal, patch) > patch.radius) return 0;
+  const eaten = Math.min(requested, stock.food,
+    Math.max(0, s.animal.hunger-c.hunger.satisfied)/c.hunger.nutrition);
+  stock.food = Math.max(0, stock.food-eaten);
+  s.animal.hunger = Math.max(0, s.animal.hunger-eaten*c.hunger.nutrition);
+  return eaten;
+}
+function selectGrass(s: Simulation, c: SimulationConfig) {
+  const candidates = c.grass.map((patch,index) => ({ patch,index }))
+    .filter(({patch,index}) => patch.accessible && s.grass[index].food >= 1)
+    .sort((a,b) => distance(s.animal,a.patch)-distance(s.animal,b.patch));
+  for (const { patch,index } of candidates) {
+    const route = planRoute(s.animal, patch, c);
+    if (route) { s.targetGrass = index; s.travelRoute = route; return true; }
+  }
+  return false;
+}
+
 export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
   if (!Number.isFinite(dt) || dt <= 0) return;
   s.time += dt;
   s.environment = environmentAt(s.time, c.environment);
   const weatherChange = (s.environment.rainfall - s.environment.evaporation) * dt;
   s.ponds.forEach((pond, i) => { pond.water = Math.max(0, Math.min(c.ponds[i].capacity, pond.water + weatherChange)); });
+  s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt));
   const a = s.animal;
+  a.hunger = Math.min(100, a.hunger + c.hunger.rate * dt);
   a.thirst = Math.min(100, a.thirst + c.thirstRate * dt);
   const shaded = isShaded(a, c);
   const exposure = Math.max(0, (s.environment.temperature - 24) / 11) *
@@ -221,6 +255,31 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number) {
     s.shadeRetryAt = s.time + c.retrySeconds;
     const shade = chooseShade(s, c);
     if (shade) { s.shadeId = shade.id; a.behaviour = 'Seeking shade'; return; }
+  }
+  const feeding = a.behaviour === 'Seeking grass' || a.behaviour === 'Grazing' || a.behaviour === 'Waiting for grass';
+  if (feeding && a.thirst >= c.seekThreshold) {
+    a.behaviour = selectWater(s, c) ? 'Seeking water' : 'Waiting for water';
+    s.retryAt = s.time + c.retrySeconds;
+  } else if (feeding || ((a.behaviour === 'Resting' || a.behaviour === 'Roaming') &&
+      a.hunger >= c.hunger.seek && a.thirst < c.seekThreshold)) {
+    if (!feeding || a.behaviour === 'Waiting for grass') {
+      if (s.time < s.grassRetryAt) return;
+      s.grassRetryAt = s.time + c.retrySeconds;
+      a.behaviour = selectGrass(s,c) ? 'Seeking grass' : 'Waiting for grass';
+      if (a.behaviour === 'Waiting for grass') return;
+    }
+    const patch = c.grass[s.targetGrass];
+    if (!patch?.accessible || s.grass[s.targetGrass].food < 0.001) {
+      a.behaviour = 'Waiting for grass'; s.grassRetryAt = s.time + c.retrySeconds; return;
+    }
+    if (a.behaviour === 'Seeking grass') {
+      if (followRoute(s,s.travelRoute,c,dt)) a.behaviour = 'Grazing';
+      return;
+    }
+    if (distance(a,patch) > patch.radius) { a.behaviour = 'Waiting for grass'; return; }
+    graze(s,c,c.hunger.eatRate*dt);
+    if (a.hunger <= c.hunger.satisfied + 1e-8) { a.behaviour = 'Resting'; s.travelRoute = []; }
+    return;
   }
   if (a.behaviour === 'Returning') {
     if (!s.travelRoute.length) s.travelRoute = planRoute(a, c.home, c) ?? [];
