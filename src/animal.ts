@@ -56,18 +56,19 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
       root.rotation.y+=turn*Math.min(1,dt*9);
     }
     root.position.set(s.animal.x,0,s.animal.z);
-    const resting=s.animal.behaviour==='Cooling in shade';
+    const sleeping=s.animal.behaviour==='Sleeping';
+    const resting=sleeping || s.animal.behaviour==='Cooling in shade';
     body.position.y=resting?-0.28:walking?Math.abs(Math.sin(stride))*0.035:Math.sin(s.time*1.7+id)*0.008;
     legs.forEach((leg,i)=>leg.rotation.x=resting?(i%2?0.7:-0.7):walking?Math.sin(stride+(i===0||i===3?0:Math.PI))*0.48:0);
     const feeding=s.animal.behaviour==='Grazing'||s.animal.behaviour==='Drinking';
     const blend=Math.min(1,dt*7);
-    head.position.y+=((feeding?0.58:1.6)-head.position.y)*blend;
+    head.position.y+=((feeding?0.58:sleeping?1.15:1.6)-head.position.y)*blend;
     head.position.z+=((feeding?1.03:0.61)-head.position.z)*blend;
     neck.rotation.x+=((feeding?0.85:-0.3)-neck.rotation.x)*blend;
     neck.position.y+=((feeding?1.0:1.28)-neck.position.y)*blend;
-    const headTarget=feeding?0.95+Math.sin(s.time*4+id)*0.045:Math.sin(s.time*0.8+id)*0.035;
+    const headTarget=sleeping?0.3:feeding?0.95+Math.sin(s.time*4+id)*0.045:Math.sin(s.time*0.8+id)*0.035;
     head.rotation.x+=(headTarget-head.rotation.x)*Math.min(1,dt*7);
-    tail.rotation.z=Math.sin(s.time*2.1+id)*0.16;
+    tail.rotation.z=sleeping?0:Math.sin(s.time*2.1+id)*0.16;
     shadow.position.x=s.animal.x;shadow.position.z=s.animal.z;shadow.rotation.y=root.rotation.y;
   } };
 }

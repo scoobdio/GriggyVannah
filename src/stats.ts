@@ -74,7 +74,7 @@ export function createAnimalStats(id: number) {
       const names: Record<string,string> = {'Seeking water':'To water','Waiting for water':'No water',
         'Seeking grass':'To grass','Waiting for grass':'No grass','Seeking shade':'To shade','Cooling in shade':'Cooling'};
       const behaviour = s.animal.behaviour === 'Roaming' ? solo ? 'Exploring' : 'With herd' : names[s.animal.behaviour] ?? s.animal.behaviour;
-      caption.textContent = `${id+1}`;
+      caption.textContent = s.animal.behaviour === 'Sleeping' ? 'z' : `${id+1}`;
       const values = [s.animal.thirst,s.animal.hunger,s.animal.heat];
       bars.forEach((bar,i)=>bar.value=values[i]);
       label.title = `${behaviour} · Thirst ${Math.round(values[0])}% · Hunger ${Math.round(values[1])}% · Heat ${Math.round(values[2])}%`;

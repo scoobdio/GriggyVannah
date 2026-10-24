@@ -23,7 +23,7 @@ test('herd mostly groups, with bounded solo periods and subsequent regroup targe
  assert.equal(herd.solo[0],false);assert.ok(distance(herd.members[0].animal,herd.members[0].roamTarget)<10);
 });
 test('short herd run preserves stock bounds, safe movement and completes multiple drinks',()=>{
- const herd=createHerd(c);
+ const herd=createHerd(c);herd.members.forEach(s=>s.animal.thirst=65);
  for(let tick=0;tick<60*35;tick++) {
   const previous=herd.members.map(s=>({...s.animal}));stepHerd(herd,c,1/60);
   herd.members.forEach((s,i)=>{
@@ -40,7 +40,7 @@ test('competing grazers consume only remaining shared food',()=>{
  const herd=createHerd(config,2);herd.members[0].grass[0].food=0.5;
  for(const s of herd.members) {Object.assign(s.animal,{x:c.grass[0].x,z:c.grass[0].z,hunger:80,thirst:0,behaviour:'Grazing'});s.targetGrass=0;}
  // Direct animal steps isolate consumption from weather and social steering.
- for(const s of herd.members) stepSimulation(s,config,1,false);
+ for(const s of herd.members) stepSimulation(s,config,2,false);
  assert.equal(herd.members[0].grass[0].food,0);
  assert.equal(herd.members.reduce((sum,s)=>sum+80-s.animal.hunger,0),2);
 });

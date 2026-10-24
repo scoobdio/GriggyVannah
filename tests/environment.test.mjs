@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clearTemperature, environmentAt, environmentConfig as e } from '../src/environment.ts';
 import { createSimulation, simulationConfig as defaults, stepSimulation } from '../src/simulation.ts';
-const c = { ...defaults, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
+const c = { ...defaults, thirstRate: 3, drinkRate: 12, heat: { ...defaults.heat, gain: 4, cooling: 5 }, sleep: { ...defaults.sleep, startHour: 24, endHour: 0 }, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
 
 test('temperature trough is 02:30, peak is 14:00, continuous at midnight', () => {

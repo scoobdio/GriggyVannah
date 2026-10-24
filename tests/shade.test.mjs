@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSimulation, stepSimulation, simulationConfig as defaults, isShaded, shadeSpot, distance, clearRoute } from '../src/simulation.ts';
-const base = { ...defaults, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
+const base = { ...defaults, thirstRate: 3, drinkRate: 12, heat: { ...defaults.heat, gain: 4, cooling: 5 }, sleep: { ...defaults.sleep, startHour: 24, endHour: 0 }, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
 const hot = { ...base, thirstRate:0, environment:{ ...base.environment, startHour:14, daySeconds:100000, clearSeconds:10000 } };
 function tick(s,c,seconds) { for(let i=0;i<seconds*60;i++) stepSimulation(s,c,1/60); }
 

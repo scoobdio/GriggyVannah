@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSimulation, createSimulationClock, simulationConfig as defaults, stepSimulation, drink, moveTowards, distance } from '../src/simulation.ts';
-const c = { ...defaults, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
+const c = { ...defaults, thirstRate: 3, drinkRate: 12, heat: { ...defaults.heat, gain: 4, cooling: 5 }, sleep: { ...defaults.sleep, startHour: 24, endHour: 0 }, roaming: false, ponds: [{ ...defaults.ponds[0], radius: 3.1, capacity: 100, initialWater: 0 }] };
 
 test('movement clamps arrival at different speeds and step sizes', () => {
   for (const speed of [0.1, 2.4, 100]) for (const dt of [1/120, 1/30, 1]) {

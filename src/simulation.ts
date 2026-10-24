@@ -12,6 +12,7 @@ export interface SimulationConfig {
   ponds: PondConfig[];
   grass: GrassPatch[];
   hunger: { rate: number; seek: number; satisfied: number; eatRate: number; nutrition: number };
+  sleep: { startHour: number; endHour: number; urgentNeed: number; needsMultiplier: number };
   home: Point;
   ground: { width: number; depth: number };
   roaming: boolean;
@@ -28,8 +29,9 @@ export interface SimulationConfig {
   edgeOffset: number;
   retrySeconds: number;
 }
-export type Behaviour = 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
+export type Behaviour = 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
+  nightRecovery: boolean;
   id: number;
   roamTarget: Point | null;
   companions: Point[];
@@ -53,19 +55,20 @@ export interface Simulation {
 export const simulationConfig: SimulationConfig = {
   ponds: pondConfigs,
   grass: grassPatches,
-  hunger: { rate: 0.7, seek: 55, satisfied: 15, eatRate: 4, nutrition: 4 },
+  hunger: { rate: 0.12, seek: 55, satisfied: 15, eatRate: 0.2, nutrition: 4 },
+  sleep: { startHour: 22, endHour: 6, urgentNeed: 85, needsMultiplier: 0.2 },
   ground: worldConfig.grassland, roaming: true,
   shades: shadeAreas,
-  heat: { seek: 60, comfortable: 25, gain: 4, cooling: 5, urgentThirst: 85 },
-  home: { x: -7, z: -4 }, speed: 2.4, thirstRate: 3,
+  heat: { seek: 60, comfortable: 25, gain: 1, cooling: 1.5, urgentThirst: 85 },
+  home: { x: -7, z: -4 }, speed: 2.4, thirstRate: 0.35,
   seekThreshold: 60, satisfiedThreshold: 10,
-  drinkRate: 12, hydrationPerWater: 4, environment: environmentConfig,
+  drinkRate: 2, hydrationPerWater: 4, environment: environmentConfig,
   drinkingRange: 0.85, edgeOffset: 0.75, retrySeconds: 1,
 };
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
   return {
-    id: 0, roamTarget: null, companions: [],
+    nightRecovery: false, id: 0, roamTarget: null, companions: [],
     animal: { ...c.home, thirst: 55, hunger: 40, heat: 20, behaviour: 'Resting' },
     ponds: c.ponds.map(p => ({ water: Math.max(0, Math.min(p.capacity, p.initialWater)) })),
     grass: c.grass.map(p => ({ food: p.capacity, moisture: 0.65 })),
@@ -243,13 +246,32 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
   s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt));
   }
   const a = s.animal;
-  a.hunger = Math.min(100, a.hunger + c.hunger.rate * dt);
-  a.thirst = Math.min(100, a.thirst + c.thirstRate * dt);
+  const sleeping = a.behaviour === 'Sleeping';
+  const metabolism = sleeping ? c.sleep.needsMultiplier : 1;
+  a.hunger = Math.min(100, a.hunger + c.hunger.rate * metabolism * dt);
+  a.thirst = Math.min(100, a.thirst + c.thirstRate * metabolism * dt);
   const shaded = isShaded(a, c);
   const exposure = Math.max(0, (s.environment.temperature - 24) / 11) *
     s.environment.daylight * (1 - s.environment.rain);
-  const heatChange = shaded ? -c.heat.cooling : exposure * c.heat.gain - (1-exposure) * 1.5;
+  const heatChange = shaded ? -c.heat.cooling : exposure * c.heat.gain - (1-exposure) * 0.3;
   a.heat = Math.max(0, Math.min(100, a.heat + heatChange * dt));
+  const night = s.environment.hour >= c.sleep.startHour || s.environment.hour < c.sleep.endHour;
+  const urgentNeed = a.thirst >= c.sleep.urgentNeed || a.hunger >= c.sleep.urgentNeed;
+  if (!night) {
+    s.nightRecovery = false;
+    if (sleeping) { a.behaviour = 'Resting'; s.travelRoute = []; }
+  } else {
+    if (urgentNeed) s.nightRecovery = true;
+    // Finish the current recovery bout before settling again: no sleep/wake oscillation.
+    const recovering = ['Seeking water','Drinking','Waiting for water','Seeking grass','Grazing','Waiting for grass'].includes(a.behaviour);
+    if (s.nightRecovery && !urgentNeed && !recovering && a.thirst < c.seekThreshold && a.hunger < c.hunger.seek)
+      s.nightRecovery = false;
+    if (!s.nightRecovery && a.heat < c.heat.seek) {
+      a.behaviour = 'Sleeping'; s.travelRoute = []; s.waterRoute = []; s.shadeId = null;
+      return;
+    }
+    if (sleeping) { a.behaviour = 'Resting'; s.travelRoute = []; }
+  }
   const wantsWater = a.thirst >= c.seekThreshold && c.ponds.some((p,i) => p.accessible && s.ponds[i].water >= 5);
   const urgentWater = a.thirst >= c.heat.urgentThirst && wantsWater;
   const shadeBehaviour = a.behaviour === 'Seeking shade' || a.behaviour === 'Cooling in shade';

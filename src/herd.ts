@@ -56,7 +56,7 @@ export function stepHerd(herd: Herd, c: SimulationConfig, dt: number) {
     });
     const target = {x:s.animal.x+push.x*dt*2,z:s.animal.z+push.z*dt*2};
     const next = s.animal.behaviour === 'Seeking water' ? s.waterRoute[0] : s.travelRoute[0];
-    if (s.animal.behaviour === 'Drinking' || s.animal.behaviour === 'Grazing' || s.animal.behaviour === 'Cooling in shade') return;
+    if (s.animal.behaviour === 'Sleeping' || s.animal.behaviour === 'Drinking' || s.animal.behaviour === 'Grazing' || s.animal.behaviour === 'Cooling in shade') return;
     if (insideGround(target,c) && clearRoute(s.animal,target,c) && (!next || clearRoute(target,next,c))) {
       s.animal.x=target.x;s.animal.z=target.z;
     }

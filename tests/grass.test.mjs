@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { grassPatches, updateGrass } from '../src/grass.ts';
 import { simulationConfig as c, createSimulation, stepSimulation, graze, distance } from '../src/simulation.ts';
 const tick = (s,config,seconds) => { for (let i=0;i<seconds*60;i++) stepSimulation(s,config,1/60); };
-const mild = { ...c, thirstRate:0, heat:{...c.heat,seek:101}, environment:{...c.environment,clearSeconds:10000} };
+const mild = { ...c, hunger:{...c.hunger,eatRate:4}, thirstRate:0, heat:{...c.heat,seek:101}, environment:{...c.environment,clearSeconds:10000} };
 
 test('moisture buffers dry spells; dry grass slowly withers and rain regrows bare patches', () => {
  const patch=grassPatches[0], stock={food:100,moisture:0.65};
