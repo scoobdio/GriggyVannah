@@ -14,15 +14,16 @@ test('full shared reserves cover at least seven conservative rainless days for t
  assert.ok(days>=7,`${days} conservative herd days`);
 });
 test('selection switches to each remaining reachable pool and never routes through a pond', () => {
- const s=createSimulation(c); const selected=[];
+ const visible={...c,perception:{...c.perception,radius:Infinity}};
+ const s=createSimulation(visible); const selected=[];
  for(let i=0;i<c.ponds.length;i++) {
-  const choice=findWater(s,c); assert.ok(choice,'Expected a reachable stocked pond');
+  const choice=findWater(s,visible); assert.ok(choice,'Expected a reachable stocked pond');
   assert.ok(!selected.includes(choice.index)); selected.push(choice.index);
   let start=s.animal;
   choice.route.forEach(point=> { assert.ok(clearRoute(start,point,c)); start=point; });
   s.ponds[choice.index].water=0;
  }
- assert.equal(findWater(s,c),undefined);
+ assert.equal(findWater(s,visible),undefined);
 });
 test('drinking affects only the selected pond and rejects distant requests', () => {
  const s=createSimulation(c); const choice=findWater(s,c);

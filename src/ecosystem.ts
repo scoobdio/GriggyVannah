@@ -60,7 +60,7 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
     herd.members.forEach((member,i) => {
       anchor.set(member.animal.x, 2.3, member.animal.z);
       const screen = Vector3.Project(anchor, identity, scene.getTransformMatrix(), viewport);
-      badges[i].update(member,herd.solo[i],screen.x,screen.y,
+      badges[i].update(member,screen.x,screen.y,
         screen.z>0 && screen.z<1 && screen.x>=0 && screen.x<=canvas.clientWidth && screen.y>=0 && screen.y<=canvas.clientHeight);
     });
     stats.update(state,herd.members,herd.solo);

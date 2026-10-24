@@ -68,12 +68,12 @@ export function createAnimalStats(id: number) {
   });
   document.body.append(label);
   return {
-    update(s: Simulation, solo: boolean, x: number, y: number, visible: boolean) {
+    update(s: Simulation, x: number, y: number, visible: boolean) {
       label.hidden = !visible;
       label.style.transform = `translate(${x}px,${y}px) translate(-50%,-100%)`;
       const names: Record<string,string> = {'Seeking water':'To water','Waiting for water':'No water',
         'Seeking grass':'To grass','Waiting for grass':'No grass','Seeking shade':'To shade','Cooling in shade':'Cooling'};
-      const behaviour = s.animal.behaviour === 'Roaming' ? solo ? 'Exploring' : 'With herd' : names[s.animal.behaviour] ?? s.animal.behaviour;
+      const behaviour = s.animal.behaviour === 'Roaming' ? s.socialMode : names[s.animal.behaviour] ?? s.animal.behaviour;
       caption.textContent = s.animal.behaviour === 'Sleeping' ? 'z' : `${id+1}`;
       const values = [s.animal.thirst,s.animal.hunger,s.animal.heat];
       bars.forEach((bar,i)=>bar.value=values[i]);

@@ -119,13 +119,13 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/weatherView.ts`: lighting, sky updates and a reusable rain line-system mesh.
 - `src/sky.ts`: procedural sky dome shader and distant landscape.
 - `src/habitat.ts`, `src/trees.ts`: shared tree/shade configuration and reusable stylised tree creation.
-- `src/herd.ts`: herd creation, shared-resource ticking, grouping, solo excursions and separation.
+- `src/herd.ts`: herd creation, shared-resource ticking, local grouping, last-seen companion memory, solo excursions and separation.
 - `src/simulation.ts`: plain state, movement, water accounting, behaviour and fixed-step clock.
 - `src/ecosystem.ts`: connects simulation state to meshes and overhead DOM stats.
 - `src/animal.ts`: low-poly herbivore meshes and simulated-time walk, feeding, idle and resting animation.
 - `src/surface.ts`: deterministic procedural coverage textures and feathered ground overlays.
 - `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel, environmental readout and display styling.
-- `tests/pacing.test.mjs`, `tests/herd.test.mjs`, `tests/grass.test.mjs`, `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
+- `tests/perception.test.mjs`, `tests/pacing.test.mjs`, `tests/herd.test.mjs`, `tests/grass.test.mjs`, `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
 - `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
 
 Meshes, materials and stat elements are created once. A fixed 1/60-second simulation step runs independently of rendering; the scene displays the resulting state. Shade footprints use simple ground meshes, independently of the sky and lighting; small canvas-generated textures soften ground coverage and provide soil variation and water ripples. There are no dynamic shadow maps, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
@@ -198,7 +198,7 @@ Each stage should remain small enough to demonstrate and validate independently.
 | 2. Grazing and hunger (implemented); fatigue/rest later | An animal seeks edible patches, consumes food and resumes activity; rain regrows grass and prolonged dryness withers it. A separate fatigue need remains planned; nighttime sleep is implemented. | Check resource consumption, need bounds and priority conflicts; observe transitions without rapid switching. |
 | 3a. Day/night, weather and pond balance (implemented ahead of grazing) | A simulated day changes daylight and temperature; rain fills the pond and peak-hour sun slowly evaporates water. | Check clock wraparound and equivalent time progression across render rates; observe a complete day/night transition. |
 | 3b. Animal heat and tree shade (implemented) | Simple trees provide accessible shade; an animal seeks and rests in shade during hot peak daytime sunshine, with rain reducing the need for sun shelter. | Check sunny midday, rain, night, shade boundaries and unavailable shade; observe travel, arrival, cooling and return to other activities. |
-| 4. Multiple animals (seven-member herd implemented); local perception later | Individuals share food/water, favour group proximity and sometimes explore alone. Bound perception before scaling further. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
+| 4. Multiple animals and local awareness (implemented) | Seven individuals discover and remember resources, favour visible companions, search for lost companions and sometimes explore alone. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
 | 5. Predators, fleeing and hunting | Prey respond to nearby threats and predators pursue with explicit success/failure rules. | Check detection, escape, pursuit termination and encounter outcomes in repeatable scenarios. |
 | 6. Life cycles and populations | Births, ageing and deaths change population counts according to explicit rules. | Check lifecycle boundaries and counts, then run repeatable longer scenarios; apply the agreed collapse/replenishment policy. |
 | 7. World and presentation | Refine trees and shelter, then add animation, sound and visual polish incrementally while behaviour remains readable. | Inspect visuals and behaviour, track asset licences, and compare measured performance before and after each addition. |
@@ -251,10 +251,22 @@ Existing pond reserves are deliberately retained, so slower consumption extends 
 
 `src/herd.ts` creates seven individually tracked animals sharing the same food and water arrays. Weather replenishment runs once per simulation tick; animal consumption is applied sequentially, rotating first access so one member does not always get first choice. Initial needs are staggered.
 
-- Social destinations are reconsidered every four simulated seconds. Most members favour positions within five units of the non-solo group centre. Staggered 20-second solo windows in a 160-second period encourage occasional excursions about 20 units from the group, followed by regrouping. Needs always take priority; a solo intention does not guarantee uninterrupted solo travel.
-- Different feeding/shade spots, bank crowding penalties and gentle local separation reduce stacking. Movement still respects ponds, trunks and ground boundaries. This is loose grouping with global herd awareness, not a local-perception flock model, strict collision system or predator response.
+- Social destinations are reconsidered every four simulated seconds. Most members favour positions within five units of the centre of companions they can currently see. Staggered 20-second solo windows in a 160-second period encourage occasional excursions about 20 units from the group, followed by regrouping. Needs always take priority; a solo intention does not guarantee uninterrupted solo travel.
+- Different feeding/shade spots, bank crowding penalties and gentle local separation reduce stacking. Movement still respects ponds, trunks and ground boundaries. This is loose grouping with radial local perception and remembered sightings, not a strict collision system or predator response.
 - Each animal has a small numbered badge with blue thirst, green hunger and orange heat bars. Hover a badge for behaviour and numeric needs. The shared panel gives the colour legend, herd size, solo intentions, total drinking cycles and resource stock. Offscreen badges are hidden. Badges stay directly above their animal, and full behaviour/numeric needs remain in accessible labels.
 - Focused checks cover seven independent animals, shared depletion, once-only weather updates, solo/regroup intentions, and 35 seconds of safe herd movement and multiple drinking cycles. Grass and pond regressions passed. A test initially referenced the wrong rainfall field; corrected checks pass. Chrome showed all seven animals, smaller badges, independent needs and drinking, with no captured console errors. Build/type checking passed with the existing bundle warning. No full-suite, multi-day or Pi run was performed.
+
+### Local awareness and memory — implemented
+
+`src/simulation.ts` configures a 24-unit radial awareness range, resource observations once per simulated second, and 600-second memory expiry. Animals initially know only resources within range. Observations refresh remembered food/water availability; outside sight, decisions use that last observation rather than live remote stock. Rain or depletion elsewhere becomes known on revisiting. Missing usable resources trigger short, obstacle-aware local search routes with periodic retries. Resource accounting is still authoritative and prevents overconsumption on arrival.
+
+Social targets use only companions currently within range. Animals remember the last observed companion centre and head back there when isolated after an excursion; if there is no useful remembered position, they search locally. There is no guarantee of locating a group that has moved out of sight. Needs and sleep continue to override social travel. Badge tooltips distinguish “Rejoining” and “Searching for herd” from ordinary grouping and solo exploration.
+
+Visible companions' intended resource positions influence crowding costs. Water bank selection, feeding destinations and shade resting spots prefer space away from those positions; existing gentle separation still operates while moving. These are soft preferences, not exclusive reservations or a guarantee against every overlap. Sleepers and active eaters/drinkers are not pushed out of place.
+
+Perception is currently distance-based, without view direction, vegetation occlusion or darkness penalties. Route planning still uses the static terrain obstacle map: this change limits resource/social knowledge, not knowledge of ground geometry. Locations and resource IDs are assumed stable. No predators or kills are included in this increment.
+
+Validation: six focused perception checks cover sight boundaries, stale stock observations and expiry, water discovery/recovery during searching, remembered food selection, isolation/regroup targets and spaced feeding/shade destinations. Short herd, pacing, resource, navigation and shade regression checks passed. Two historical assertions were adapted: the all-pond navigation fixture explicitly grants full visibility, and shade arrival accepts any valid canopy resting spot. Build/type checking passed with the existing bundle-size warning. Chrome automation was unavailable for this increment, so visual verification remains outstanding. No full-suite or multi-day run was performed.
 
 ### Animal heat and tree shade — implemented
 
@@ -332,4 +344,4 @@ Recommendations below are starting points for discussion, not approved commitmen
 - Use Chrome for automated browser verification; Safari automation is not required. The Raspberry Pi browser remains the eventual hardware target.
 - Include a suggested git commit message at the end of each completed task; do not commit unless asked.
 
-Next, add bounded local perception and refine resource contention before introducing predators and fleeing. Trees, shade and the sky are implemented; further habitat polish should preserve readable behaviour. The app remains local-only; no hosting, deployment, push or commit is part of this increment.
+Next, add one predator with stalking, pursuit and fleeing, initially without kills. Tune readable encounters before introducing deaths and reproduction. Trees, shade and the sky are implemented; further habitat polish should preserve readable behaviour. The app remains local-only; no hosting, deployment, push or commit is part of this increment.

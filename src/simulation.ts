@@ -9,6 +9,7 @@ import type { Environment, EnvironmentConfig } from './environment.ts';
 
 export interface Point { x: number; z: number }
 export interface SimulationConfig {
+  perception: { radius: number; memorySeconds: number; interval: number };
   ponds: PondConfig[];
   grass: GrassPatch[];
   hunger: { rate: number; seek: number; satisfied: number; eatRate: number; nutrition: number };
@@ -31,6 +32,13 @@ export interface SimulationConfig {
 }
 export type Behaviour = 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
+  waterMemory: Record<string, { seenAt:number; available:number }>;
+  grassMemory: Record<string, { seenAt:number; available:number }>;
+  shadeMemory: Record<string, number>;
+  nextObservation: number;
+  lastGroup: (Point & { seenAt:number }) | null;
+  socialMode: 'With herd' | 'Exploring' | 'Rejoining' | 'Searching for herd';
+  searchRoute: Point[];
   nightRecovery: boolean;
   id: number;
   roamTarget: Point | null;
@@ -53,6 +61,7 @@ export interface Simulation {
   shadeRetryAt: number;
 }
 export const simulationConfig: SimulationConfig = {
+  perception: { radius: 24, memorySeconds: 600, interval: 1 },
   ponds: pondConfigs,
   grass: grassPatches,
   hunger: { rate: 0.12, seek: 55, satisfied: 15, eatRate: 0.2, nutrition: 4 },
@@ -67,7 +76,9 @@ export const simulationConfig: SimulationConfig = {
 };
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
-  return {
+  const state: Simulation = {
+    waterMemory: {}, grassMemory: {}, shadeMemory: {}, nextObservation: 0,
+    lastGroup: null, socialMode: 'With herd', searchRoute: [],
     nightRecovery: false, id: 0, roamTarget: null, companions: [],
     animal: { ...c.home, thirst: 55, hunger: 40, heat: 20, behaviour: 'Resting' },
     ponds: c.ponds.map(p => ({ water: Math.max(0, Math.min(p.capacity, p.initialWater)) })),
@@ -78,7 +89,42 @@ export function createSimulation(c: SimulationConfig): Simulation {
     time: 0, cycles: 0, retryAt: 0, shadeId: null, shadeRetryAt: 0,
     edge: { ...c.home },
   };
+  observeResources(state,c);
+  return state;
 }
+export function observeResources(s: Simulation,c: SimulationConfig) {
+  c.ponds.forEach((p,i)=>{if(distance(s.animal,p)<=c.perception.radius)
+    s.waterMemory[p.id]={seenAt:s.time,available:p.accessible?s.ponds[i].water:0};});
+  c.grass.forEach((p,i)=>{if(distance(s.animal,p)<=c.perception.radius)
+    s.grassMemory[p.id]={seenAt:s.time,available:p.accessible?s.grass[i].food:0};});
+  c.shades.forEach(p=>{if(distance(s.animal,p)<=c.perception.radius) s.shadeMemory[p.id]=s.time;});
+  for(const memory of [s.waterMemory,s.grassMemory]) for(const id of Object.keys(memory))
+    if(s.time-memory[id].seenAt>c.perception.memorySeconds) delete memory[id];
+  for(const id of Object.keys(s.shadeMemory)) if(s.time-s.shadeMemory[id]>c.perception.memorySeconds) delete s.shadeMemory[id];
+  s.nextObservation=s.time+c.perception.interval;
+}
+function knownStock(s:Simulation,c:SimulationConfig,index:number,kind:'water'|'grass') {
+  const p=kind==='water'?c.ponds[index]:c.grass[index];
+  if(distance(s.animal,p)<=c.perception.radius)
+    return p.accessible?(kind==='water'?s.ponds[index].water:s.grass[index].food):0;
+  const memory=(kind==='water'?s.waterMemory:s.grassMemory)[p.id];
+  return memory && s.time-memory.seenAt<=c.perception.memorySeconds?memory.available:0;
+}
+function crowdCost(s:Simulation,p:Point) {
+  return s.companions.reduce((cost,other)=>cost+Math.max(0,2-distance(other,p))*8,0);
+}
+function searchLocally(s:Simulation,c:SimulationConfig,dt:number) {
+  if(!s.searchRoute.length) {
+    for(let attempt=0;attempt<12;attempt++) {
+      const angle=++s.roamSequence*2.399963;
+      const target={x:s.animal.x+Math.cos(angle)*12,z:s.animal.z+Math.sin(angle)*12};
+      const route=planRoute(s.animal,target,c);
+      if(route) {s.searchRoute=route;break;}
+    }
+  }
+  followRoute(s,s.searchRoute,c,dt);
+}
+
 export function moveTowards(position: Point, target: Point, amount: number) {
   const remaining = distance(position, target);
   if (remaining === 0 || amount <= 0) return;
@@ -165,11 +211,18 @@ function followRoute(s: Simulation, route: Point[], c: SimulationConfig, dt: num
   return route.length === 0;
 }
 function chooseShade(s: Simulation, c: SimulationConfig) {
-  for (const shade of [...c.shades].sort((a,b) => distance(s.animal,a)-distance(s.animal,b))) {
-    if (!shade.accessible) continue;
-    const route = planRoute(s.animal, restingSpot(shade,s.id), c);
-    if (route) { s.travelRoute = route; return shade; }
+  let best: { shade:ShadeArea; route:Point[]; score:number } | undefined;
+  for (const shade of c.shades) {
+    if (!shade.accessible || !(shade.id in s.shadeMemory)) continue;
+    for(let i=0;i<12;i++) {
+      const target=restingSpot(shade,s.id+i);
+      const score=distance(s.animal,target)+crowdCost(s,target);
+      if(best && score>=best.score) continue;
+      const route=planRoute(s.animal,target,c);
+      if(route) best={shade,route,score};
+    }
   }
+  if(best) {s.travelRoute=best.route;return best.shade;}
 }
 function beginRoaming(s: Simulation, c: SimulationConfig) {
   if (s.roamTarget) {
@@ -191,7 +244,7 @@ function beginRoaming(s: Simulation, c: SimulationConfig) {
 export function findWater(s: Simulation, c: SimulationConfig) {
   let best: { index: number; edge: Point; route: Point[]; length: number } | undefined;
   c.ponds.forEach((pond, index) => {
-    if (!pond.accessible || s.ponds[index].water < 0.01) return;
+    if (knownStock(s,c,index,'water') < 0.01) return;
     for (let i = 0; i < 24; i++) {
       const angle = i / 24 * Math.PI * 2;
       const edge = { x: pond.x + Math.cos(angle) * (pond.radius + c.edgeOffset),
@@ -209,7 +262,7 @@ export function findWater(s: Simulation, c: SimulationConfig) {
 function selectWater(s: Simulation, c: SimulationConfig) {
   const choice = findWater(s, c);
   if (!choice) return false;
-  s.targetPond = choice.index; s.edge = choice.edge; s.waterRoute = choice.route;
+  s.targetPond = choice.index; s.edge = choice.edge; s.waterRoute = choice.route; s.searchRoute=[];
   return true;
 }
 
@@ -224,16 +277,20 @@ export function graze(s: Simulation, c: SimulationConfig, requested: number) {
   return eaten;
 }
 function selectGrass(s: Simulation, c: SimulationConfig) {
-  const candidates = c.grass.map((patch,index) => ({ patch,index }))
-    .filter(({patch,index}) => patch.accessible && s.grass[index].food >= 1)
-    .sort((a,b) => distance(s.animal,a.patch)-distance(s.animal,b.patch));
-  for (const { patch,index } of candidates) {
-    const angle = s.id * 2.399963;
-    const target = s.id === 0 ? patch : {x:patch.x+Math.cos(angle)*patch.radius*0.55,z:patch.z+Math.sin(angle)*patch.radius*0.55};
-    const route = planRoute(s.animal, target, c);
-    if (route) { s.targetGrass = index; s.travelRoute = route; return true; }
-  }
-  return false;
+  let best: {index:number;route:Point[];score:number} | undefined;
+  c.grass.forEach((patch,index)=>{
+    if(knownStock(s,c,index,'grass')<1) return;
+    for(let i=0;i<12;i++) {
+      const angle=(s.id+i)*2.399963;
+      const target={x:patch.x+Math.cos(angle)*patch.radius*0.55,z:patch.z+Math.sin(angle)*patch.radius*0.55};
+      const score=distance(s.animal,target)+crowdCost(s,target);
+      if(best && score>=best.score) continue;
+      const route=planRoute(s.animal,target,c);
+      if(route) best={index,route,score};
+    }
+  });
+  if(!best) return false;
+  s.targetGrass=best.index;s.travelRoute=best.route;s.searchRoute=[];return true;
 }
 
 export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, updateResources = true) {
@@ -245,6 +302,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
   s.ponds.forEach((pond, i) => { pond.water = Math.max(0, Math.min(c.ponds[i].capacity, pond.water + weatherChange)); });
   s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt));
   }
+  if(s.time>=s.nextObservation) observeResources(s,c);
   const a = s.animal;
   const sleeping = a.behaviour === 'Sleeping';
   const metabolism = sleeping ? c.sleep.needsMultiplier : 1;
@@ -272,7 +330,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
     }
     if (sleeping) { a.behaviour = 'Resting'; s.travelRoute = []; }
   }
-  const wantsWater = a.thirst >= c.seekThreshold && c.ponds.some((p,i) => p.accessible && s.ponds[i].water >= 5);
+  const wantsWater = a.thirst >= c.seekThreshold && c.ponds.some((_,i) => knownStock(s,c,i,'water') >= 5);
   const urgentWater = a.thirst >= c.heat.urgentThirst && wantsWater;
   const shadeBehaviour = a.behaviour === 'Seeking shade' || a.behaviour === 'Cooling in shade';
   if (shadeBehaviour && urgentWater) {
@@ -303,13 +361,13 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
   } else if (feeding || ((a.behaviour === 'Resting' || a.behaviour === 'Roaming') &&
       a.hunger >= c.hunger.seek && a.thirst < c.seekThreshold)) {
     if (!feeding || a.behaviour === 'Waiting for grass') {
-      if (s.time < s.grassRetryAt) return;
+      if (s.time < s.grassRetryAt) { searchLocally(s,c,dt); return; }
       s.grassRetryAt = s.time + c.retrySeconds;
       a.behaviour = selectGrass(s,c) ? 'Seeking grass' : 'Waiting for grass';
-      if (a.behaviour === 'Waiting for grass') return;
+      if (a.behaviour === 'Waiting for grass') {searchLocally(s,c,dt);return;}
     }
     const patch = c.grass[s.targetGrass];
-    if (!patch?.accessible || s.grass[s.targetGrass].food < 0.001) {
+    if (!patch || knownStock(s,c,s.targetGrass,'grass') < 0.001) {
       a.behaviour = 'Waiting for grass'; s.grassRetryAt = s.time + c.retrySeconds; return;
     }
     if (a.behaviour === 'Seeking grass') {
@@ -338,12 +396,12 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
     }
   }
   if (a.behaviour === 'Waiting for water') {
-    if (s.time < s.retryAt) return;
+    if (s.time < s.retryAt) {searchLocally(s,c,dt);return;}
     s.retryAt = s.time + c.retrySeconds;
-    if (!selectWater(s, c)) return;
+    if (!selectWater(s, c)) {searchLocally(s,c,dt);return;}
     a.behaviour = 'Seeking water';
   }
-  if (!c.ponds[s.targetPond]?.accessible || s.ponds[s.targetPond].water < 0.01) {
+  if (!c.ponds[s.targetPond] || knownStock(s,c,s.targetPond,'water') < 0.01) {
     a.behaviour = 'Waiting for water';
     s.retryAt = s.time + c.retrySeconds;
     return;

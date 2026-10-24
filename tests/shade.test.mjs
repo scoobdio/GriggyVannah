@@ -16,7 +16,9 @@ test('hot animal arrives in shade without overshooting, cools and resumes activi
    cooling=true;
    assert.ok(isShaded(s.animal,hot));
    const shade=hot.shades.find(x=>x.id===s.shadeId);
-   assert.ok(distance(s.animal,shadeSpot(shade))<1e-8);
+   assert.ok(distance(s.animal,shade)<=shade.radius);
+   assert.ok(distance(s.animal,shade)>=0.65);
+   assert.equal(s.travelRoute.length,0);
   }
   if(cooling && s.animal.behaviour==='Returning') {
    assert.ok(s.animal.heat<=hot.heat.comfortable); return;

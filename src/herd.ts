@@ -17,13 +17,21 @@ export function createHerd(c: SimulationConfig, count = herdConfig.count): Herd 
 export function updateSocialTargets(herd: Herd, c: SimulationConfig) {
   const time = herd.members[0].time;
   herd.solo = herd.members.map((_,i) => (time+i*23)%herdConfig.socialPeriod < herdConfig.soloSeconds);
-  const group = herd.members.filter((_,i)=>!herd.solo[i]);
-  const centre = (group.length ? group : herd.members).reduce((p,s) => ({x:p.x+s.animal.x,z:p.z+s.animal.z}),{x:0,z:0});
-  centre.x /= group.length || herd.members.length; centre.z /= group.length || herd.members.length;
   herd.members.forEach((s,i) => {
-    const angle = i*2.399963 + Math.floor(time/herdConfig.socialPeriod)*0.9;
-    const radius = herd.solo[i] ? 20 : herdConfig.groupRadius;
-    const target = {x:centre.x+Math.cos(angle)*radius,z:centre.z+Math.sin(angle)*radius};
+    const neighbours=herd.members.filter((other,j)=>j!==i && distance(s.animal,other.animal)<=c.perception.radius);
+    let centre:Point={...s.animal};
+    if(neighbours.length) {
+      centre=neighbours.reduce((p,m)=>({x:p.x+m.animal.x,z:p.z+m.animal.z}),{x:0,z:0});
+      centre.x/=neighbours.length;centre.z/=neighbours.length;
+      s.lastGroup={...centre,seenAt:time};
+      s.socialMode=herd.solo[i]?'Exploring':'With herd';
+    } else if(!herd.solo[i] && s.lastGroup && time-s.lastGroup.seenAt<c.perception.memorySeconds && distance(s.animal,s.lastGroup)>3) {
+      centre=s.lastGroup;s.socialMode='Rejoining';
+    } else { s.socialMode=herd.solo[i]?'Exploring':'Searching for herd'; }
+    const searching=s.socialMode==='Searching for herd';
+    const angle=i*2.399963+(searching?Math.floor(time/herdConfig.rethinkSeconds)*2.399963:Math.floor(time/herdConfig.socialPeriod)*0.9);
+    const radius=herd.solo[i]?20:searching?12:s.socialMode==='Rejoining'?0:herdConfig.groupRadius;
+    const target={x:centre.x+Math.cos(angle)*radius,z:centre.z+Math.sin(angle)*radius};
     target.x = Math.max(-c.ground.width/2+2,Math.min(c.ground.width/2-2,target.x));
     target.z = Math.max(-c.ground.depth/2+2,Math.min(c.ground.depth/2-2,target.z));
     const route = planRoute(s.animal,target,c);
@@ -43,7 +51,9 @@ export function stepHerd(herd: Herd, c: SimulationConfig, dt: number) {
   const first = herd.tick++ % herd.members.length;
   for (let offset=0;offset<herd.members.length;offset++) {
     const index = (first+offset)%herd.members.length, s = herd.members[index];
-    s.companions = herd.members.filter((_,i)=>i!==index).map(m=>m.animal.behaviour === 'Seeking water' ? m.edge : m.animal);
+    s.companions = herd.members.filter((m,i)=>i!==index && distance(s.animal,m.animal)<=c.perception.radius)
+      .map(m=>m.animal.behaviour === 'Seeking water' ? m.edge :
+        (m.animal.behaviour === 'Seeking grass' || m.animal.behaviour === 'Seeking shade') && m.travelRoute.length ? m.travelRoute[m.travelRoute.length-1] : m.animal);
     stepSimulation(s,c,dt,offset===0);
   }
   // Gentle local separation, bounded by walkable ground and the next route segment.
@@ -55,7 +65,7 @@ export function stepHerd(herd: Herd, c: SimulationConfig, dt: number) {
       if (d>0.001 && d<1.3) { push.x += (s.animal.x-p.x)/d*(1.3-d); push.z += (s.animal.z-p.z)/d*(1.3-d); }
     });
     const target = {x:s.animal.x+push.x*dt*2,z:s.animal.z+push.z*dt*2};
-    const next = s.animal.behaviour === 'Seeking water' ? s.waterRoute[0] : s.travelRoute[0];
+    const next = s.animal.behaviour === 'Seeking water' ? s.waterRoute[0] : s.animal.behaviour.startsWith('Waiting') ? s.searchRoute[0] : s.travelRoute[0];
     if (s.animal.behaviour === 'Sleeping' || s.animal.behaviour === 'Drinking' || s.animal.behaviour === 'Grazing' || s.animal.behaviour === 'Cooling in shade') return;
     if (insideGround(target,c) && clearRoute(s.animal,target,c) && (!next || clearRoute(target,next,c))) {
       s.animal.x=target.x;s.animal.z=target.z;
