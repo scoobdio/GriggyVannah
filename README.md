@@ -10,7 +10,7 @@ The intended stack is TypeScript, Vite and Babylon.js. Start with a browser appl
 
 The first deliverable is a small autonomous scene: grassland, one watering hole and one placeholder herbivore that repeatedly becomes thirsty, travels to water and drinks while water replenishes. Make this cycle reliable and legible before expanding the ecosystem.
 
-The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, temperature and rain now affect lighting and pond water. Animal heat and shade seeking are implemented: in hot sunshine the herbivore seeks tree shade and rests while cooling, with rain reducing exposure. Hunger-driven grazing and rain-dependent grass patches are also implemented. Grouping, fleeing, hunting, reproduction and population dynamics remain ambitions.
+The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, temperature and rain now affect lighting and pond water. Animal heat and shade seeking are implemented: in hot sunshine the herbivore seeks tree shade and rests while cooling, with rain reducing exposure. Hunger-driven grazing and rain-dependent grass patches are also implemented. Loose grouping is implemented; fleeing, hunting, reproduction and population dynamics remain ambitions.
 
 ## Current implementation and evidence
 
@@ -29,7 +29,7 @@ The original checkout contained only this README. A minimal browser application 
 | Day/night, temperature and weather | `src/environment.ts`, `src/weatherView.ts` | Deterministic environmental rules; smooth lighting and lightweight rain visuals. |
 | Overhead thirst/behaviour and pond supply indicators | `src/stats.ts`, `src/style.css` | DOM meters follow the animal; pond panel includes completed cycles. |
 
-Three independently tracked ponds start full and fill through rain and slowly evaporate during clear peak-heat hours. Seven block-built placeholder herbivores now seek water, drink, wait for replenishment when necessary, and roam between needs across the ground. Thirst, heat, hunger, grass food/moisture and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
+Three independently tracked ponds start full and fill through rain and slowly evaporate during clear peak-heat hours. Seven stylised low-poly herbivores now seek water, drink, wait for replenishment when necessary, and roam between needs across the ground. Thirst, heat, hunger, grass food/moisture and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
 
 Baseline validation on 22 October 2026 (before the autonomous milestone):
 
@@ -122,12 +122,13 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/herd.ts`: herd creation, shared-resource ticking, grouping, solo excursions and separation.
 - `src/simulation.ts`: plain state, movement, water accounting, behaviour and fixed-step clock.
 - `src/ecosystem.ts`: connects simulation state to meshes and overhead DOM stats.
-- `src/animal.ts`: reusable placeholder herbivore creation.
+- `src/animal.ts`: low-poly herbivore meshes and simulated-time walk, feeding, idle and resting animation.
+- `src/surface.ts`: deterministic procedural coverage textures and feathered ground overlays.
 - `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel, environmental readout and display styling.
 - `tests/herd.test.mjs`, `tests/grass.test.mjs`, `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
 - `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
 
-Meshes, materials and stat elements are created once. A fixed 1/60-second simulation step runs independently of rendering; the scene displays the resulting state. Shade footprints use simple ground meshes, independently of the sky and lighting; there are no dynamic shadow maps, textures, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
+Meshes, materials and stat elements are created once. A fixed 1/60-second simulation step runs independently of rendering; the scene displays the resulting state. Shade footprints use simple ground meshes, independently of the sky and lighting; small canvas-generated textures soften ground coverage and provide soil variation and water ripples. There are no dynamic shadow maps, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
 
 ### Recommended evolution
 
@@ -256,8 +257,20 @@ Four scattered stylised acacia trees of varied height (2.7–7.2 units) and cano
 - Choose a nearby accessible canopy resting spot using obstacle-aware waypoint routes. A small visibility graph routes around pond interiors and tree trunks; water selection no longer requires a route via the original resting spot. Resting spots sit away from the trunk, inside the canopy footprint.
 - At the resting spot, the herbivore lowers its body to suggest sitting and the label reads “Cooling in shade.” The overhead heat meter makes recovery visible.
 - Thirst at 85 or above interrupts cooling when reachable pond water is available. An empty or inaccessible pond does not prevent cooling; drinking resumes when supply returns. Active drinking finishes before seeking shade.
-- If no safe shade is available, retry at a bounded interval while continuing existing behaviour. Trees and their footprints are static; moving/removing trees and complex terrain navigation remain outside this increment.
+- If no safe shade is available, retry at a bounded interval while continuing existing behaviour. Tree locations and simulated shade footprints are static; canopies sway visually; moving/removing trees and complex terrain navigation remain outside this increment.
 - Heat does not yet increase thirst or cause injury/death. Hunger and grazing are implemented as a separate need. The larger, initially full reserves described below replace the earlier small-pond defaults.
+
+### Visual refinement — 24 October 2026
+
+The low-poly style is retained, with more natural silhouettes and softer transitions:
+
+- Grass beds use irregular feathered coverage rather than solid discs, with denser, uneven tufts that gently sway. Colour and height still reflect food/moisture. Shade uses soft canopy/contact overlays, and sandy banks fade into subtly mottled terrain.
+- Trees have branching trunks and subtle canopy movement. Water has drifting procedural bump ripples. These are inexpensive approximations, not physical water or sun-projected shadows.
+- Herbivores have shaped bodies, necks, muzzles, ears, horns, eyes and hooves. Jointed legs follow distance travelled, turns ease toward travel direction, feeding lowers the head/neck, and idle breathing, tail movement and folded resting legs add life.
+- Animation uses simulation time and pauses with the world. Visual grass/shade feathering does **not** change the circular interaction ranges or resource accounting. The softer boundaries deliberately avoid drawing exact gameplay outlines.
+- Textures are generated once locally; grass tufts are merged per patch. Per-frame updates reuse meshes/materials. The added geometry, transparency and bump mapping still need measurement on the actual Pi.
+
+Type checking and the production build pass (existing bundle-size warning remains). Nine focused herd/grass checks passed; Chrome spot checks showed the revised terrain, animals and feeding preview without captured console errors. A canvas typing incompatibility was corrected during the build, and an overly dark terrain tint was corrected during visual inspection. No full-suite, multi-day, Safari or Pi run was performed. Animation quality across all frame rates and all lighting conditions remains unverified.
 
 ### Sky and backdrop — implemented
 

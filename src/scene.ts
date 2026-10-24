@@ -36,8 +36,11 @@ export function createSavannahScene(engine: Engine) {
   light.groundColor = Color3.FromHexString('#8a7956');
 
   createGrassland(scene, worldConfig.grassland);
-  createTrees(scene);
+  const updateTrees = createTrees(scene);
   const ponds = worldConfig.ponds.map(config => createPond(scene, config));
-  attachEcosystem(scene, ponds.map(pond => pond.water));
+  attachEcosystem(scene, ponds.map(pond => pond.water), (time,rain) => {
+    updateTrees(time,rain);
+    ponds.forEach(pond=>pond.update(time));
+  });
   return scene;
 }
