@@ -18,7 +18,7 @@ export interface SimulationConfig {
   ground: { width: number; depth: number };
   roaming: boolean;
   shades: ShadeArea[];
-  heat: { seek: number; comfortable: number; gain: number; cooling: number; urgentThirst: number };
+  heat: { seek: number; comfortable: number; gain: number; peakMultiplier: number; cooling: number; urgentThirst: number };
   speed: number;
   thirstRate: number;
   seekThreshold: number;
@@ -68,7 +68,7 @@ export const simulationConfig: SimulationConfig = {
   sleep: { startHour: 22, endHour: 6, urgentNeed: 85, needsMultiplier: 0.2 },
   ground: worldConfig.grassland, roaming: true,
   shades: shadeAreas,
-  heat: { seek: 60, comfortable: 25, gain: 1, cooling: 1.5, urgentThirst: 85 },
+  heat: { seek: 60, comfortable: 25, gain: 1, peakMultiplier: 6, cooling: 1.5, urgentThirst: 85 },
   home: { x: -7, z: -4 }, speed: 2.4, thirstRate: 0.35,
   seekThreshold: 60, satisfiedThreshold: 10,
   drinkRate: 2, hydrationPerWater: 4, environment: environmentConfig,
@@ -293,6 +293,11 @@ function selectGrass(s: Simulation, c: SimulationConfig) {
   s.targetGrass=best.index;s.travelRoute=best.route;s.searchRoute=[];return true;
 }
 
+// Smooth afternoon boost, matching the existing 11:00–17:00 peak-sun window.
+export function peakHeatStrength(hour:number) {
+  return Math.abs(hour-14)<3 ? Math.cos((hour-14)/3*Math.PI/2)**2 : 0;
+}
+
 export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, updateResources = true) {
   if (!Number.isFinite(dt) || dt <= 0) return;
   s.time += dt;
@@ -311,7 +316,10 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
   const shaded = isShaded(a, c);
   const exposure = Math.max(0, (s.environment.temperature - 24) / 11) *
     s.environment.daylight * (1 - s.environment.rain);
-  const heatChange = shaded ? -c.heat.cooling : exposure * c.heat.gain - (1-exposure) * 0.3;
+  const peakHeat = peakHeatStrength(s.environment.hour);
+  const heating = c.heat.gain * (1 + (c.heat.peakMultiplier-1)*peakHeat);
+  const shelterFromPeak = peakHeat > 0.35 && exposure > 0 && s.environment.rain <= 0.1;
+  const heatChange = shaded ? -c.heat.cooling : exposure * heating - (1-exposure) * 0.3;
   a.heat = Math.max(0, Math.min(100, a.heat + heatChange * dt));
   const night = s.environment.hour >= c.sleep.startHour || s.environment.hour < c.sleep.endHour;
   const urgentNeed = a.thirst >= c.sleep.urgentNeed || a.hunger >= c.sleep.urgentNeed;
@@ -338,7 +346,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
     s.shadeId = null;
   } else if (shadeBehaviour) {
     const shade = c.shades.find(item => item.id === s.shadeId && item.accessible);
-    if (!shade || a.heat <= c.heat.comfortable || s.environment.rain > 0.1 || exposure <= 0) {
+    if (!shade || (a.heat <= c.heat.comfortable && !shelterFromPeak) || s.environment.rain > 0.1 || exposure <= 0) {
       s.shadeId = null;
       a.behaviour = wantsWater && selectWater(s, c) ? 'Seeking water' : c.roaming ? 'Resting' : 'Returning';
       s.travelRoute = a.behaviour === 'Returning' ? planRoute(a, c.home, c) ?? [] : [];
