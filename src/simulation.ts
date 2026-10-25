@@ -1,6 +1,6 @@
 import { grassPatches, updateGrass } from './grass.ts';
 import type { GrassPatch, GrassState } from './grass.ts';
-import { pondConfigs, worldConfig } from './config.ts';
+import { pondConfigs, worldConfig, reproductionConfig } from './config.ts';
 import type { PondConfig } from './config.ts';
 import { shadeAreas } from './habitat.ts';
 import type { ShadeArea } from './habitat.ts';
@@ -32,12 +32,16 @@ export interface SimulationConfig {
 }
 export type Behaviour = 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
+  health: number;
+  deprivation: { thirst:number; hunger:number; heat:number };
+  life: { sex:'female'|'male'; age:number; pregnancy:number|null; fatherId:number|null;
+    motherId:number|null; mateId:number|null; nextMateAt:number };
   waterMemory: Record<string, { seenAt:number; available:number }>;
   grassMemory: Record<string, { seenAt:number; available:number }>;
   shadeMemory: Record<string, number>;
   nextObservation: number;
   lastGroup: (Point & { seenAt:number }) | null;
-  socialMode: 'With herd' | 'Exploring' | 'Rejoining' | 'Searching for herd';
+  socialMode: 'Playing' | 'With herd' | 'Exploring' | 'Rejoining' | 'Searching for herd';
   searchRoute: Point[];
   nightRecovery: boolean;
   id: number;
@@ -77,6 +81,9 @@ export const simulationConfig: SimulationConfig = {
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
   const state: Simulation = {
+    health:100, deprivation:{thirst:0,hunger:0,heat:0},
+    life: {sex:'female',age:reproductionConfig.maturityDays*c.environment.daySeconds,
+      pregnancy:null,fatherId:null,motherId:null,mateId:null,nextMateAt:0},
     waterMemory: {}, grassMemory: {}, shadeMemory: {}, nextObservation: 0,
     lastGroup: null, socialMode: 'With herd', searchRoute: [],
     nightRecovery: false, id: 0, roamTarget: null, companions: [],
@@ -298,14 +305,18 @@ export function peakHeatStrength(hour:number) {
   return Math.abs(hour-14)<3 ? Math.cos((hour-14)/3*Math.PI/2)**2 : 0;
 }
 
+export function updateWorldResources(s:Simulation,c:SimulationConfig,dt:number) {
+  const weatherChange = (s.environment.rainfall - s.environment.evaporation) * dt;
+  s.ponds.forEach((pond, i) => { pond.water = Math.max(0, Math.min(c.ponds[i].capacity, pond.water + weatherChange)); });
+  s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt));
+}
+
 export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, updateResources = true) {
   if (!Number.isFinite(dt) || dt <= 0) return;
   s.time += dt;
   s.environment = environmentAt(s.time, c.environment);
   if (updateResources) {
-  const weatherChange = (s.environment.rainfall - s.environment.evaporation) * dt;
-  s.ponds.forEach((pond, i) => { pond.water = Math.max(0, Math.min(c.ponds[i].capacity, pond.water + weatherChange)); });
-  s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt));
+    updateWorldResources(s,c,dt);
   }
   if(s.time>=s.nextObservation) observeResources(s,c);
   const a = s.animal;

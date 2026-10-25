@@ -19,3 +19,23 @@ export const worldConfig = {
   ponds: pondConfigs,
   render: { maxDevicePixelRatio: 1.5 },
 };
+
+// Compressed display-time lifecycle, not a species-accurate breeding model.
+export const reproductionConfig = {
+  maturityDays: 3,
+  gestationDays: 2,
+  recoveryDays: 3,
+  mateRange: 6,
+  conceptionNeedLimit: 60,
+  birthNeedLimit: 85,
+  birthHungerCost: 15,
+  birthThirstCost: 10,
+};
+
+// Stylised simulated days, not biological lifespans. Tune with predator balance later.
+export const lifecycleConfig = {
+  criticalNeed:95, graceSeconds:15, damagePerSecond:0.6, calfDamageMultiplier:0.5,
+  recoveryNeedLimit:60, recoveryPerSecond:0.3, recoveryStopsDays:24,
+  senescenceDays:30, senescenceDamagePerSecond:0.25,
+  carcassSeconds:120, adultMeat:40,
+};

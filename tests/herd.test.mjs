@@ -19,7 +19,7 @@ test('herd mostly groups, with bounded solo periods and subsequent regroup targe
  const herd=createHerd(c);updateSocialTargets(herd,c);
  assert.ok(herd.solo.filter(Boolean).length>0);assert.ok(herd.solo.filter(Boolean).length<=2);
  assert.ok(distance(herd.members[0].animal,herd.members[0].roamTarget)>10);
- herd.members.forEach(s=>s.time=herdConfig.soloSeconds+1);updateSocialTargets(herd,c);
+ herd.world.time=herdConfig.soloSeconds+1;herd.members.forEach(s=>s.time=herd.world.time);updateSocialTargets(herd,c);
  assert.equal(herd.solo[0],false);assert.ok(distance(herd.members[0].animal,herd.members[0].roamTarget)<10);
 });
 test('short herd run preserves stock bounds, safe movement and completes multiple drinks',()=>{

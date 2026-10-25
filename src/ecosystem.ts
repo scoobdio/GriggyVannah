@@ -1,3 +1,5 @@
+import { lifecycleConfig, reproductionConfig } from './config';
+import { growthScale } from './reproduction';
 import { createHerd, stepHerd } from './herd';
 import type { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -19,19 +21,27 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
       rainSeconds: 10000, transitionSeconds: 0 };
   }
   const herd = createHerd(config);
-  const state = herd.members[0];
-  if (preview === 'grazing') { state.animal.hunger = 85; state.animal.thirst = 10; }
-  if (preview === 'heat') { state.animal.heat = 90; state.animal.thirst = 20; }
-  if (preview === 'night' || preview === 'rain' || preview === 'heat' || preview === 'grazing') {
+  const state = herd.world;
+  const first=herd.members[0];
+  if(preview==='death') {first.life.age=lifecycleConfig.senescenceDays*config.environment.daySeconds;first.health=0.1;}
+  if(preview==='play') herd.members.slice(0,3).forEach(m=>{m.life.age=0; m.animal.hunger=20;m.animal.thirst=20;m.animal.heat=10;});
+  if (preview === 'birth') {
+    const mother=herd.members[2];
+    mother.life.pregnancy=reproductionConfig.gestationDays*config.environment.daySeconds-0.5;
+    mother.life.mateId=1;mother.animal.hunger=20;mother.animal.thirst=20;
+  }
+  if (preview === 'grazing') { first.animal.hunger = 85; first.animal.thirst = 10; }
+  if (preview === 'heat') { first.animal.heat = 90; first.animal.thirst = 20; }
+  if (preview === 'death' || preview === 'play' || preview === 'night' || preview === 'rain' || preview === 'heat' || preview === 'grazing' || preview === 'birth') {
     const notice = document.createElement('div');
     notice.className = 'preview-notice'; notice.textContent = `Development preview: ${preview}`;
     document.body.append(notice);
     scene.onDisposeObservable.add(() => notice.remove());
   }
   const animalShadow = softTexture(scene,'animal-contact-shadow');
-  const animals = herd.members.map((_,i)=>createHerbivore(scene,i,animalShadow));
-  const badges = herd.members.map((_,i)=>createAnimalStats(i));
-  const stats = createStats(config.ponds);
+  const animals = new Map<number,ReturnType<typeof createHerbivore>>();
+  const badges = new Map<number,ReturnType<typeof createAnimalStats>>();
+  const stats = createStats(config);
   const weather = createWeatherView(scene);
   const updateGrassView = createGrassView(scene, config.grass);
   const advance = createSimulationClock(dt => stepHerd(herd, config, dt));
@@ -47,7 +57,19 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
     weather.update(state.environment, state.time);
     updateGrassView(state.grass,state.time);
     updateLandscape(state.time,state.environment.rain);
-    herd.members.forEach((member,i) => animals[i].update(member));
+    const living=new Set(herd.members.map(m=>m.id));
+    const retained=new Set([...living,...herd.carcasses.map(b=>b.id)]);
+    for(const [id,view] of animals) if(!retained.has(id)) {view.dispose();animals.delete(id);}
+    for(const [id,badge] of badges) if(!living.has(id)) {badge.dispose();badges.delete(id);}
+    for(const member of herd.members) {
+      if(!animals.has(member.id)) animals.set(member.id,createHerbivore(scene,member.id,animalShadow,config));
+      if(!badges.has(member.id)) badges.set(member.id,createAnimalStats(member.id,config));
+      animals.get(member.id)!.update(member);
+    }
+    for(const body of herd.carcasses) {
+      if(!animals.has(body.id)) animals.set(body.id,createHerbivore(scene,body.id,animalShadow,config));
+      animals.get(body.id)!.corpse(body);
+    }
     // Keep the bank fixed: colour/visibility reflects stock, not interaction geometry.
     waterMeshes.forEach((mesh, i) => {
       const stock = state.ponds[i].water;
@@ -57,16 +79,18 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
   scene.onAfterRenderObservable.add(() => {
     const canvas = engine.getRenderingCanvas()!;
     const viewport = scene.activeCamera!.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight);
-    herd.members.forEach((member,i) => {
-      anchor.set(member.animal.x, 2.3, member.animal.z);
+    herd.members.forEach(member => {
+      anchor.set(member.animal.x, 2.3*growthScale(member,config), member.animal.z);
       const screen = Vector3.Project(anchor, identity, scene.getTransformMatrix(), viewport);
-      badges[i].update(member,screen.x,screen.y,
+      badges.get(member.id)!.update(member,screen.x,screen.y,
         screen.z>0 && screen.z<1 && screen.x>=0 && screen.x<=canvas.clientWidth && screen.y>=0 && screen.y<=canvas.clientHeight);
     });
-    stats.update(state,herd.members,herd.solo);
+    stats.update(state,herd.members,herd.solo,herd.births,herd.deaths,herd.carcasses.length);
   });
   scene.onDisposeObservable.add(() => {
     stats.dispose();
+    animals.forEach(view=>view.dispose());
+    animalShadow.dispose();
     badges.forEach(badge=>badge.dispose());
     document.removeEventListener('visibilitychange', onVisibility);
   });

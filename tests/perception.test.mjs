@@ -21,7 +21,7 @@ test('local search discovers unknown water and completes recovery',()=>{
 });
 test('distant animals do not affect local grouping; isolation follows a last-seen group',()=>{
  const local={...c,home:{x:-30,z:-30}};const h=createHerd(local,3);
- h.members.forEach(s=>s.time=30);h.members[2].animal.x=100;h.members[2].animal.z=100;
+ h.world.time=30;h.members.forEach(s=>s.time=h.world.time);h.members[2].animal.x=100;h.members[2].animal.z=100;
  updateSocialTargets(h,local);
  assert.ok(distance(h.members[0].lastGroup,h.members[1].animal)<0.001);
  assert.equal(h.members[2].socialMode,'Searching for herd');

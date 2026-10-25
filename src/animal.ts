@@ -5,10 +5,12 @@ import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
-import type { Simulation } from './simulation';
+import type { Carcass } from './lifecycle';
+import { growthScale } from './reproduction';
+import type { Simulation, SimulationConfig } from './simulation';
 import { softGround } from './surface';
 
-export function createHerbivore(scene: Scene, id: number, shadowTexture: DynamicTexture) {
+export function createHerbivore(scene: Scene, id: number, shadowTexture: DynamicTexture, config:SimulationConfig) {
   const root = new TransformNode(`herbivore-${id}`,scene);
   const body = new TransformNode(`herbivore-${id}-body-pivot`,scene);body.parent=root;
   const makeMaterial = (name:string,hex:string) => {
@@ -43,7 +45,15 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
   const shadow=softGround(scene,`herbivore-${id}-shadow`,0,0,0.9,shadowTexture,'#343a25',0.3,0.029).mesh;
   shadow.scaling.z=1.4;
   let lastTime=-1,stride=id*1.9;
-  return { root,head, update(s:Simulation) {
+  return { root,head,
+    dispose() { root.dispose();shadow.material?.dispose();shadow.dispose();coat.dispose();dark.dispose();cream.dispose(); },
+    corpse(carcass:Carcass) {
+      const s=carcass.animal, scale=growthScale(s,config);
+      root.scaling.setAll(scale);root.position.set(s.animal.x,0,s.animal.z);
+      body.rotation.z=Math.PI/2;body.position.set(0.85,0.4,0);
+      head.rotation.x=0.3;legs.forEach(leg=>leg.rotation.x=0.3);
+      shadow.position.set(s.animal.x,0.029,s.animal.z);shadow.scaling.set(scale,1,scale*1.4);
+    }, update(s:Simulation) {
     if (s.time === lastTime) return;
     const dt=lastTime<0?0:s.time-lastTime;lastTime=s.time;
     const dx=s.animal.x-root.position.x,dz=s.animal.z-root.position.z;
@@ -55,10 +65,13 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
       const turn=Math.atan2(Math.sin(target-root.rotation.y),Math.cos(target-root.rotation.y));
       root.rotation.y+=turn*Math.min(1,dt*9);
     }
+    const scale=growthScale(s,config);root.scaling.setAll(scale);
+    shadow.scaling.set(scale,1,scale*1.4);
     root.position.set(s.animal.x,0,s.animal.z);
     const sleeping=s.animal.behaviour==='Sleeping';
     const resting=sleeping || s.animal.behaviour==='Cooling in shade';
     body.position.y=resting?-0.28:walking?Math.abs(Math.sin(stride))*0.035:Math.sin(s.time*1.7+id)*0.008;
+    if(walking && s.socialMode==='Playing' && s.animal.behaviour==='Roaming') body.position.y+=Math.abs(Math.sin(stride*0.8))*0.22;
     legs.forEach((leg,i)=>leg.rotation.x=resting?(i%2?0.7:-0.7):walking?Math.sin(stride+(i===0||i===3?0:Math.PI))*0.48:0);
     const feeding=s.animal.behaviour==='Grazing'||s.animal.behaviour==='Drinking';
     const blend=Math.min(1,dt*7);

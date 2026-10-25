@@ -10,7 +10,7 @@ The intended stack is TypeScript, Vite and Babylon.js. Start with a browser appl
 
 The first deliverable is a small autonomous scene: grassland, one watering hole and one placeholder herbivore that repeatedly becomes thirsty, travels to water and drinks while water replenishes. Make this cycle reliable and legible before expanding the ecosystem.
 
-The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths should eventually affect populations. Day/night cycles, temperature and rain now affect lighting and pond water. Animal heat and shade seeking are implemented: in hot sunshine the herbivore seeks tree shade and rests while cooling, with rain reducing exposure. Hunger-driven grazing and rain-dependent grass patches are also implemented. Loose grouping is implemented; fleeing, hunting, reproduction and population dynamics remain ambitions.
+The longer-term world includes open plains, clusters of trees, sheltered areas and watering holes, with resources that are consumed and replenished. Animals may graze, drink, rest, travel, group, flee, hunt and reproduce. Births, ageing and deaths now affect populations. Day/night cycles, temperature and rain now affect lighting and pond water. Animal heat and shade seeking are implemented: in hot sunshine the herbivore seeks tree shade and rests while cooling, with rain reducing exposure. Hunger-driven grazing and rain-dependent grass patches are also implemented. Loose grouping is implemented; reproduction and calf growth are implemented; age-related health, mortality and calf play are implemented; fleeing, hunting and predator–prey balance remain planned.
 
 ## Current implementation and evidence
 
@@ -29,7 +29,7 @@ The original checkout contained only this README. A minimal browser application 
 | Day/night, temperature and weather | `src/environment.ts`, `src/weatherView.ts` | Deterministic environmental rules; smooth lighting and lightweight rain visuals. |
 | Overhead thirst/behaviour and pond supply indicators | `src/stats.ts`, `src/style.css` | DOM meters follow the animal; pond panel includes completed cycles. |
 
-Three independently tracked ponds start full and fill through rain and slowly evaporate during clear peak-heat hours. Seven stylised low-poly herbivores now seek water, drink, wait for replenishment when necessary, and roam between needs across the ground. Thirst, heat, hunger, grass food/moisture and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
+Three independently tracked ponds start full and fill through rain and slowly evaporate during clear peak-heat hours. The herd starts with seven stylised low-poly adults and can grow through births. Herbivores seek water, drink, wait for replenishment when necessary, and roam between needs across the ground. Thirst, heat, hunger, grass food/moisture and available water are simulation state, independent of their visual representation. No backend, persistence or external assets have been added. The camera has no input controls.
 
 Baseline validation on 22 October 2026 (before the autonomous milestone):
 
@@ -119,13 +119,15 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/weatherView.ts`: lighting, sky updates and a reusable rain line-system mesh.
 - `src/sky.ts`: procedural sky dome shader and distant landscape.
 - `src/habitat.ts`, `src/trees.ts`: shared tree/shade configuration and reusable stylised tree creation.
+- `src/lifecycle.ts`: health, ageing, mortality and finite, range-checked carrion consumption.
+- `src/reproduction.ts`: nearby adult pairing, pregnancy, safe births, maternal recovery and calf growth.
 - `src/herd.ts`: herd creation, shared-resource ticking, local grouping, last-seen companion memory, solo excursions and separation.
 - `src/simulation.ts`: plain state, movement, water accounting, behaviour and fixed-step clock.
 - `src/ecosystem.ts`: connects simulation state to meshes and overhead DOM stats.
 - `src/animal.ts`: low-poly herbivore meshes and simulated-time walk, feeding, idle and resting animation.
 - `src/surface.ts`: deterministic procedural coverage textures and feathered ground overlays.
 - `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel, environmental readout and display styling.
-- `tests/peak-heat.test.mjs`, `tests/perception.test.mjs`, `tests/pacing.test.mjs`, `tests/herd.test.mjs`, `tests/grass.test.mjs`, `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
+- `tests/lifecycle.test.mjs`, `tests/reproduction.test.mjs`, `tests/peak-heat.test.mjs`, `tests/perception.test.mjs`, `tests/pacing.test.mjs`, `tests/herd.test.mjs`, `tests/grass.test.mjs`, `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
 - `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
 
 Meshes, materials and stat elements are created once. A fixed 1/60-second simulation step runs independently of rendering; the scene displays the resulting state. Shade footprints use simple ground meshes, independently of the sky and lighting; small canvas-generated textures soften ground coverage and provide soil variation and water ripples. There are no dynamic shadow maps, post-processing effects or downloaded assets. The rendering pixel ratio is capped at 1.5 as a provisional cost restraint, not a measured Pi performance guarantee.
@@ -200,7 +202,7 @@ Each stage should remain small enough to demonstrate and validate independently.
 | 3b. Animal heat and tree shade (implemented) | Simple trees provide accessible shade; an animal seeks and rests in shade during hot peak daytime sunshine, with rain reducing the need for sun shelter. | Check sunny midday, rain, night, shade boundaries and unavailable shade; observe travel, arrival, cooling and return to other activities. |
 | 4. Multiple animals and local awareness (implemented) | Seven individuals discover and remember resources, favour visible companions, search for lost companions and sometimes explore alone. | Check perception boundaries and resource contention without negative stock; measure increasing populations. |
 | 5. Predators, fleeing and hunting | Prey respond to nearby threats and predators pursue with explicit success/failure rules. | Check detection, escape, pursuit termination and encounter outcomes in repeatable scenarios. |
-| 6. Life cycles and populations | Births, ageing and deaths change population counts according to explicit rules. | Check lifecycle boundaries and counts, then run repeatable longer scenarios; apply the agreed collapse/replenishment policy. |
+| 6. Life cycles (reproduction, maturation and mortality implemented) | Nearby adults reproduce, calves grow and play; unmet needs and old age reduce population, leaving temporary edible bodies. Future predators can hunt or scavenge. | Check lifecycle boundaries and counts, then run repeatable longer scenarios; apply the agreed collapse/replenishment policy. |
 | 7. World and presentation | Refine trees and shelter, then add animation, sound and visual polish incrementally while behaviour remains readable. | Inspect visuals and behaviour, track asset licences, and compare measured performance before and after each addition. |
 | 8. Persistence and delivery | If approved, save/resume works and a chosen deployment supports unattended display. | Check save round trips and version handling; test browser restart, reload and sustained runs on the target Pi. |
 
@@ -256,6 +258,20 @@ Existing pond reserves are deliberately retained, so slower consumption extends 
 - Each animal has a small numbered badge with blue thirst, green hunger and orange heat bars. Hover a badge for behaviour and numeric needs. The shared panel gives the colour legend, herd size, solo intentions, total drinking cycles and resource stock. Offscreen badges are hidden. Badges stay directly above their animal, and full behaviour/numeric needs remain in accessible labels.
 - Focused checks cover seven independent animals, shared depletion, once-only weather updates, solo/regroup intentions, and 35 seconds of safe herd movement and multiple drinking cycles. Grass and pond regressions passed. A test initially referenced the wrong rainfall field; corrected checks pass. Chrome showed all seven animals, smaller badges, independent needs and drinking, with no captured console errors. Build/type checking passed with the existing bundle warning. No full-suite, multi-day or Pi run was performed.
 
+### Reproduction and calves — implemented
+
+The initial herd has four adult females and three adult males. `reproductionConfig` in `src/config.ts` sets deliberately compressed entertainment timings:
+
+- Conception requires a nearby adult of the opposite sex within six units (and perception range), a clear route between them, and both animals below 60 hunger, thirst and heat. Eligible activities are resting, roaming or cooling in shade. Animals do not abandon urgent needs or sleep to mate.
+- Pregnancy lasts two simulated days (ten minutes at the default day length). A female carries one calf at a time. Males have a quarter-day interval between conceptions; mothers cannot conceive again until three days after birth.
+- Birth is deferred if the mother has a need at 85 or higher, or no safe open position exists nearby. A successful birth adds one uniquely identified calf, costs the mother 15 hunger and 10 thirst points, and leaves existing resource quantities intact. The calf shares the world's food/water and begins consuming them normally.
+- Calves start at 55% adult size and grow smoothly to adulthood over three days. When comfortable they favour nearby calves and play during daytime; otherwise they favour a visible mother or use remembered/local herd information, and do not take solo excursions until mature. Their normal grazing, drinking, heat and sleep behaviours remain active. This does not model nursing, genetics, kinship-based mate exclusion or species-specific biology.
+- Population readouts show adults, calves, pregnancies and cumulative births; badge tooltips include sex, stage and pregnancy. New meshes and badges are created once per birth. The development-only birth preview exercises that path quickly.
+
+There is **no hard population cap or automatic culling**. Unmet needs and old age can now cause death. Predators are intended to provide additional population control but are not implemented yet. Existing resource budgets and Pi performance estimates must be revisited as the herd grows; no stable population balance is claimed. World reload still resets the herd.
+
+Verification uses short scenarios seeded near lifecycle boundaries rather than multi-day runs: conception eligibility, maturation, maternal recovery, deferred/blocked births, unique IDs, shared resources, mother-following and once-only weather updates. Six reproduction checks plus nine herd/pacing regressions passed, along with the production build/type check (existing bundle warning). Chrome birth-preview inspection confirmed population increasing from seven to eight, a calf-specific badge, maternal recovery and updated pregnancy/birth counts, with no captured console errors. No full-suite or multi-day run was performed.
+
 ### Local awareness and memory — implemented
 
 `src/simulation.ts` configures a 24-unit radial awareness range, resource observations once per simulated second, and 600-second memory expiry. Animals initially know only resources within range. Observations refresh remembered food/water availability; outside sight, decisions use that last observation rather than live remote stock. Rain or depletion elsewhere becomes known on revisiting. Missing usable resources trigger short, obstacle-aware local search routes with periodic retries. Resource accounting is still authoritative and prevents overconsumption on arrival.
@@ -278,7 +294,7 @@ Four scattered stylised acacia trees of varied height (2.7–7.2 units) and cano
 - At the resting spot, the herbivore lowers its body to suggest sitting and the label reads “Cooling in shade.” The overhead heat meter makes recovery visible.
 - Thirst at 85 or above interrupts cooling when reachable pond water is available. An empty or inaccessible pond does not prevent cooling; drinking resumes when supply returns. Active drinking finishes before seeking shade.
 - If no safe shade is available, retry at a bounded interval while continuing existing behaviour. Tree locations and simulated shade footprints are static; canopies sway visually; moving/removing trees and complex terrain navigation remain outside this increment.
-- Heat does not yet increase thirst or cause injury/death. Hunger and grazing are implemented as a separate need. The larger, initially full reserves described below replace the earlier small-pond defaults.
+- Heat does not increase thirst; prolonged extreme heat now damages health and can cause death. Hunger and grazing are implemented as a separate need. The larger, initially full reserves described below replace the earlier small-pond defaults.
 
 ### Visual refinement — 24 October 2026
 
@@ -298,7 +314,7 @@ A procedural sky dome blends daylight, warm dawn/dusk horizons and night colours
 
 The camera remains fixed and input-free, at a lower angle to include the horizon. A continuous ground plane and low-poly distant hills replace the isolated floating-plane appearance. The sky uses one shader/material and dome mesh; it adds no image assets, libraries or cloud services. Pixel shading still needs measurement on the actual Pi.
 
-For reproducible development-only browser inspection, append `?preview=heat`, `?preview=night`, `?preview=rain` or `?preview=grazing` to the Vite URL. Heat starts at 14:00 with a hot animal, night at 22:00, and rain at 14:00 with full rain intensity. Grazing starts with high hunger and low thirst for a quick feeding check. Each shows an explicit development-preview notice. Remove the query to restore the normal cycle. Production builds ignore these presets.
+For reproducible development-only browser inspection, append `?preview=heat`, `?preview=night`, `?preview=rain`, `?preview=grazing` `?preview=birth`, `?preview=death` or `?preview=play` to the Vite URL. Heat starts at 14:00 with a hot animal, night at 22:00, and rain at 14:00 with full rain intensity. Grazing starts with high hunger and low thirst for a quick feeding check. Birth starts one female near the end of gestation, producing a calf on the first eligible lifecycle check without waiting multiple days. Death starts one elder near death; play starts three healthy calves together. Each shows an explicit development-preview notice. Remove the query to restore the normal cycle. Production builds ignore these presets.
 
 ## Performance and reliability
 
@@ -324,7 +340,7 @@ Recommendations below are starting points for discussion, not approved commitmen
 | Day length and weather tuning | Current provisional defaults are a five-minute day and 80/40-second clear/rain periods. Tune after observation; heat and shade thresholds are provisional too. Defer seasons and complex weather. |
 | Save/resume | Defer persistence until the autonomous loop is stable, then consider a local snapshot if continuity is desired. This keeps the initial scope small. |
 | Progression while the browser is closed | Initially evolve only while running. Offline catch-up or an always-running server needs an explicit product decision. |
-| Population collapse versus migration/replenishment | Keep death out of the first demonstration. Later consider explicit, observable migration to sustain a living display, subject to approval; never silently replace animals. |
+| Population collapse versus migration/replenishment | Extinction currently persists without automatic replacement; weather keeps running. Consider explicit, observable migration to sustain a living display, subject to approval; never silently replace animals. |
 | Camera behaviour | The current fixed camera includes the horizon, animal and water. Consider gentle autonomous camera movement later; normal viewing should remain input-free. |
 | Species | Begin with a generic placeholder herbivore, then choose a small set whose interactions are easy to observe and verify. |
 | Asset sourcing and licensing | Start with simple procedural shapes. Before adding external models, textures or sound, record source, licence and attribution requirements. |
@@ -344,6 +360,21 @@ Recommendations below are starting points for discussion, not approved commitmen
 - Use Chrome for automated browser verification; Safari automation is not required. The Raspberry Pi browser remains the eventual hardware target.
 - Include a suggested git commit message at the end of each completed task; do not commit unless asked.
 
-Next, add one predator with stalking, pursuit and fleeing, initially without kills. Tune readable encounters before introducing deaths and reproduction. Trees, shade and the sky are implemented; further habitat polish should preserve readable behaviour. The app remains local-only; no hosting, deployment, push or commit is part of this increment.
+Next, implement predator pursuit, fleeing and successful hunts that remove prey, so predation can provide the requested population control. Reproduction is already active; tune births against predation once both exist. Trees, shade and the sky are implemented; further habitat polish should preserve readable behaviour. The app remains local-only; no hosting, deployment, push or commit is part of this increment.
 
 Peak-hour shade tuning (24 October 2026): three focused checks cover the afternoon heating curve, spending over 40 seconds sheltered in a one-minute fixed-peak scenario, staying after cooling, and release for urgent thirst, rain and evening. Three selected shade regressions also passed. The first check incorrectly assumed cooling would already be complete within the minute; it now separately checks continued shelter after reaching comfort. Build/type checking passed with the existing bundle warning. Hunger, thirst, sleep and resource rates are unchanged. No browser or multi-day test was run for this tuning change.
+
+
+## Age, health, calf play and carcasses
+
+Implemented in `src/lifecycle.ts`, `src/herd.ts`, `src/animal.ts` and `src/stats.ts`. These are stylised provisional defaults in `lifecycleConfig` (`src/config.ts`), measured in simulation time:
+
+- Health stays within 0–100. Each need at 95 or above has its own continuous 15-second grace period, then costs 0.6 health per second. Several severe needs stack; dropping below 95 resets that need's grace period. Calves take half this damage.
+- With all needs below 60, health regenerates at up to 0.3 per second. Recovery declines linearly after maturity (day 3), reaching zero at age 24 days. At 30 days, irreversible old-age decline costs 0.25 health per second. These compressed lifespans are game tuning, not ecological claims.
+- Healthy, comfortable calves prefer locally visible calves, with short daytime play bouts (12 seconds per 40-second cycle), changing destinations and a light bounding animation. Needs and sleep retain priority; mother-following remains the fallback. Calves still do not take adult solo excursions.
+- At zero health an animal permanently leaves the living herd before reproduction is checked. Its badge disappears and its body rests on its side for 120 simulated seconds, or until its meat is consumed. Adults provide 40 meat units; calf reserves scale with body size. `consumeCarrion` checks range, remaining food and expiry, ready for future predator feeding. Predators themselves are not implemented yet.
+- Animal badges include a fourth, rose-coloured health bar (higher is healthier); hover details include age and health. Population diagnostics show deaths and current carcasses. Views are tracked by permanent IDs, and expired bodies release their meshes/materials. The independent world clock keeps weather and resources running through extinction; there is no silent repopulation.
+
+Validation uses short, seeded boundary scenarios: grace/reset, recovery at different ages, calf resistance, old-age death, no post-death birth, carrion bounds/expiry, empty-herd weather and calf peer preference. No multi-day balancing or Pi performance claim is made.
+
+Lifecycle verification (25 October 2026): all 21 focused lifecycle, reproduction, herd and perception checks passed. Two older clock-seeding fixtures were updated for the independent world clock. Type checking and the production build passed (existing large-bundle warning). Chrome spot checks confirmed a visible resting carcass, removal of its badge, six surviving adults, death/carcass counts and three calves displaying Playing with health bars; no console errors were captured in the death preview. Carcass expiry was checked in logic by seeding its time boundary, not waiting through a long browser run. No full suite, multi-day run or Pi test was performed.

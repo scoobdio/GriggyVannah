@@ -1,13 +1,15 @@
-import type { PondConfig } from './config';
-import type { Simulation } from './simulation';
+import { isAdult } from './reproduction';
+import type { Simulation, SimulationConfig } from './simulation';
 
-export function createStats(ponds: PondConfig[]) {
+export function createStats(config:SimulationConfig) {
+  const ponds=config.ponds;
   const panel = document.createElement('aside');
   panel.className = 'water-stats';
   panel.innerHTML = '<strong>Watering holes</strong><span class="water-value"></span><meter min="0" aria-label="Available pond water"></meter><span class="cycles"></span>';
   const legend = document.createElement('div'); legend.className = 'need-legend';
-  legend.innerHTML = '<span>Thirst</span> · <span>Hunger</span> · <span>Heat</span>'; panel.append(legend);
+  legend.innerHTML = '<span>Thirst</span> · <span>Hunger</span> · <span>Heat</span> · <span>Health</span>'; panel.append(legend);
   const grassSupply = document.createElement('span'); grassSupply.className = 'grass-supply'; panel.append(grassSupply);
+  const population=document.createElement('span');population.className='grass-supply';panel.append(population);
   const weather = document.createElement('aside');
   weather.className = 'environment-stats';
   weather.setAttribute('aria-label', 'Environment');
@@ -28,7 +30,9 @@ export function createStats(ponds: PondConfig[]) {
   });
   let previous = '';
   return {
-    update(s: Simulation, members: Simulation[], solo: boolean[]) {
+    update(s: Simulation, members: Simulation[], solo: boolean[], births:number, deaths:number, bodies:number) {
+      const calves=members.filter(m=>!isAdult(m,config)).length;
+      const pregnant=members.filter(m=>m.life.pregnancy!==null).length;
       const food = Math.round(s.grass.reduce((sum,patch) => sum+patch.food,0));
       const completed = members.reduce((sum,m)=>sum+m.cycles,0);
       const wanderers = solo.filter(Boolean).length;
@@ -40,13 +44,14 @@ export function createStats(ponds: PondConfig[]) {
       const degrees = e.temperature.toFixed(1);
       const flow = e.rainfall > 0 ? `Rain filling +${e.rainfall.toFixed(2)}/s`
         : e.evaporation > 0 ? `Evaporating −${e.evaporation.toFixed(2)}/s` : 'No weather inflow or loss';
-      const key = `${food}/${water}/${completed}/${clock}/${e.day}/${description}/${degrees}/${flow}/${wanderers}/${s.ponds.map(p=>Math.round(p.water))}`;
+      const key = `${members.length}/${calves}/${pregnant}/${births}/${deaths}/${bodies}/${food}/${water}/${completed}/${clock}/${e.day}/${description}/${degrees}/${flow}/${wanderers}/${s.ponds.map(p=>Math.round(p.water))}`;
       if (key === previous) return;
       previous = key;
       document.body.classList.toggle('night', e.daylight < 0.2);
       worldTime.textContent = `Day ${e.day} · ${clock}`;
       weatherDescription.textContent = description;
       temperature.textContent = `${degrees} °C`;
+      population.textContent = `${members.length-calves} adults · ${calves} ${calves===1?'calf':'calves'} · ${pregnant} pregnant · ${births} ${births===1?'birth':'births'} · ${deaths} deaths · ${bodies} carcasses`;
       grassSupply.textContent = `Grass: ${food} · Herd: ${members.length} · Solo: ${wanderers}`;
       waterValue.textContent = `${water} / ${capacity} total water · ${flow} per pond`;
       waterMeter.value = water;
@@ -57,13 +62,13 @@ export function createStats(ponds: PondConfig[]) {
   };
 }
 
-// One small badge per animal: behaviour plus three narrow need bars.
-export function createAnimalStats(id: number) {
+// One small badge per animal: behaviour plus four narrow bars.
+export function createAnimalStats(id: number, config:SimulationConfig) {
   const label = document.createElement('div'); label.className = 'herd-badge';
   const caption = document.createElement('span'); label.append(caption);
-  const bars = ['Thirst','Hunger','Heat'].map((name,i) => {
+  const bars = ['Thirst','Hunger','Heat','Health'].map((name,i) => {
     const meter = document.createElement('meter'); meter.min=0;meter.max=100;
-    meter.className = `need-${i}`; meter.setAttribute('aria-label',`${name}: higher means greater need`);
+    meter.className = `need-${i}`; meter.setAttribute('aria-label',`${name}: higher means ${i===3?'better health':'greater need'}`);
     label.append(meter); return meter;
   });
   document.body.append(label);
@@ -75,10 +80,11 @@ export function createAnimalStats(id: number) {
         'Seeking grass':'To grass','Waiting for grass':'No grass','Seeking shade':'To shade','Cooling in shade':'Cooling'};
       const behaviour = s.animal.behaviour === 'Roaming' ? s.socialMode : names[s.animal.behaviour] ?? s.animal.behaviour;
       caption.textContent = s.animal.behaviour === 'Sleeping' ? 'z' : `${id+1}`;
-      const values = [s.animal.thirst,s.animal.hunger,s.animal.heat];
+      const values = [s.animal.thirst,s.animal.hunger,s.animal.heat,s.health];
       bars.forEach((bar,i)=>bar.value=values[i]);
-      label.title = `${behaviour} · Thirst ${Math.round(values[0])}% · Hunger ${Math.round(values[1])}% · Heat ${Math.round(values[2])}%`;
-      label.setAttribute('aria-label',`Herbivore ${id+1}, ${behaviour}. Thirst ${Math.round(values[0])}%, hunger ${Math.round(values[1])}%, heat ${Math.round(values[2])}%.`);
+      const life=`${isAdult(s,config)?'Adult':'Calf'} ${s.life.sex} · Age ${(s.life.age/config.environment.daySeconds).toFixed(1)} days · Health ${Math.round(s.health)}%${s.life.pregnancy!==null?' · Pregnant':''}`;
+      label.title = `${life} · ${behaviour} · Thirst ${Math.round(values[0])}% · Hunger ${Math.round(values[1])}% · Heat ${Math.round(values[2])}%`;
+      label.setAttribute('aria-label',`Herbivore ${id+1}, ${life}, ${behaviour}. Thirst ${Math.round(values[0])}%, hunger ${Math.round(values[1])}%, heat ${Math.round(values[2])}%.`);
     },
     dispose() { label.remove(); },
   };
