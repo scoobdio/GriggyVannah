@@ -5,7 +5,7 @@ import { isAdult, updateReproduction } from './reproduction.ts';
 import { createSimulation, updateWorldResources, stepSimulation, planRoute, clearRoute, insideGround, distance } from './simulation.ts';
 import type { Simulation, SimulationConfig, Point } from './simulation.ts';
 
-export const herdConfig = { count: 7, groupRadius: 5, soloSeconds: 20, socialPeriod: 160, rethinkSeconds: 4 };
+export const herdConfig = { count: 7, groupRadius: 5, soloSeconds: 20, socialPeriod: 160, rethinkSeconds: 4, playRethinkSeconds: 0.5 };
 export interface Herd { world:Simulation; carcasses:Carcass[]; deaths:number; members: Simulation[]; solo: boolean[]; nextSocialAt: number; tick: number; nextId:number; births:number; nextBreedingAt:number }
 export function createHerd(c: SimulationConfig, count = herdConfig.count): Herd {
   const members = Array.from({length:count},(_,id) => {
@@ -19,15 +19,21 @@ export function createHerd(c: SimulationConfig, count = herdConfig.count): Herd 
   for (const member of members) { member.ponds = world.ponds; member.grass = world.grass; }
   return {world,carcasses:[],deaths:0,members,solo:members.map(()=>false),nextSocialAt:0,tick:0,nextId:count,births:0,nextBreedingAt:1};
 }
+function canPlay(s:Simulation,c:SimulationConfig) {
+  return !isAdult(s,c) && s.health>=60 &&
+    Math.max(s.animal.hunger,s.animal.thirst,s.animal.heat)<55 &&
+    s.environment.daylight>0.2 && ['Resting','Roaming'].includes(s.animal.behaviour);
+}
 export function updateSocialTargets(herd: Herd, c: SimulationConfig) {
   const time = herd.world.time;
   herd.solo = herd.members.map((m,i) => isAdult(m,c) && (time+i*23)%herdConfig.socialPeriod < herdConfig.soloSeconds);
   herd.members.forEach((s,i) => {
     let neighbours=herd.members.filter((other,j)=>j!==i && distance(s.animal,other.animal)<=c.perception.radius);
     const mother=neighbours.find(m=>m.id===s.life.motherId);
-    const peers=neighbours.filter(m=>!isAdult(m,c));
-    const playful=!isAdult(s,c) && peers.length>0 && s.health>=60 &&
-      Math.max(s.animal.hunger,s.animal.thirst,s.animal.heat)<55 && s.environment.daylight>0.2;
+    const peers=neighbours.filter(m=>canPlay(m,c));
+    const playful=canPlay(s,c) && peers.length>0;
+    const previousRole=s.playRole;
+    s.playRole=null;s.playTargetId=null;
     if(!isAdult(s,c)) { if(playful) neighbours=peers; else if(mother) neighbours=[mother]; }
     const playing=playful && time%40<12;
     let centre:Point={...s.animal};
@@ -42,12 +48,41 @@ export function updateSocialTargets(herd: Herd, c: SimulationConfig) {
     const searching=s.socialMode==='Searching for herd';
     const angle=i*2.399963+(playing?Math.floor(time/4)*1.7:0)+(searching?Math.floor(time/herdConfig.rethinkSeconds)*2.399963:Math.floor(time/herdConfig.socialPeriod)*0.9);
     const radius=herd.solo[i]?20:searching?12:s.socialMode==='Rejoining'?0:!isAdult(s,c)?2:herdConfig.groupRadius;
-    const target={x:centre.x+Math.cos(angle)*radius,z:centre.z+Math.sin(angle)*radius};
+    let target={x:centre.x+Math.cos(angle)*radius,z:centre.z+Math.sin(angle)*radius};
+    if(playing) {
+      // Local calves form a chase line; a different calf takes the lead every six seconds.
+      const group=[s,...peers].sort((a,b)=>a.id-b.id);
+      const leaderIndex=Math.floor(time/6)%group.length;
+      const rank=(group.indexOf(s)-leaderIndex+group.length)%group.length;
+      if(rank>0) {
+        const ahead=group[(group.indexOf(s)-1+group.length)%group.length];
+        const gap=distance(s.animal,ahead.animal);
+        const trailing=Math.min(1,1.4/Math.max(gap,0.001));
+        target={x:ahead.animal.x+(s.animal.x-ahead.animal.x)*trailing,
+          z:ahead.animal.z+(s.animal.z-ahead.animal.z)*trailing};
+        s.playRole='Chasing';s.playTargetId=ahead.id;
+      } else {
+        s.playRole='Leading';
+        // Keep an escape destination between updates so the leader runs a clear arc.
+        if(previousRole==='Leading' && s.roamTarget && distance(s.animal,s.roamTarget)>1) target=s.roamTarget;
+        else {
+          const chaser=group[(leaderIndex+1)%group.length];
+          const away=Math.atan2(s.animal.z-chaser.animal.z,s.animal.x-chaser.animal.x);
+          let escape:Point|undefined;
+          for(const turn of [0.65,-0.65,1.3,-1.3,Math.PI]) {
+            const p={x:s.animal.x+Math.cos(away+turn)*6,z:s.animal.z+Math.sin(away+turn)*6};
+            if(insideGround(p,c) && clearRoute(s.animal,p,c)) {escape=p;break;}
+          }
+          if(!escape) {s.playRole=null;s.socialMode='With herd';}
+          else target=escape;
+        }
+      }
+    }
     target.x = Math.max(-c.ground.width/2+2,Math.min(c.ground.width/2-2,target.x));
     target.z = Math.max(-c.ground.depth/2+2,Math.min(c.ground.depth/2-2,target.z));
     const route = planRoute(s.animal,target,c);
     // Keep the last safe social destination if a new one falls inside an obstacle.
-    if (!route) return;
+    if (!route) {s.playRole=null;s.playTargetId=null;s.socialMode='With herd';return;}
     s.roamTarget = target;
     if (s.animal.behaviour === 'Roaming') s.travelRoute = route;
   });
@@ -59,7 +94,8 @@ export function stepHerd(herd: Herd, c: SimulationConfig, dt: number) {
   updateWorldResources(herd.world,c,dt);
   herd.carcasses=herd.carcasses.filter(body=>herd.world.time<body.expiresAt && body.meat>0);
   if (herd.world.time >= herd.nextSocialAt) {
-    updateSocialTargets(herd,c); herd.nextSocialAt = herd.world.time + herdConfig.rethinkSeconds;
+    updateSocialTargets(herd,c);
+    herd.nextSocialAt = herd.world.time + (herd.members.some(s=>s.playRole)?herdConfig.playRethinkSeconds:herdConfig.rethinkSeconds);
   }
   const positions = herd.members.map(s=>({x:s.animal.x,z:s.animal.z}));
   // Rotate first access to shared stocks; weather advances exactly once per world tick.

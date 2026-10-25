@@ -88,7 +88,10 @@ export function createAnimalStats(config:SimulationConfig,onClose:()=>void) {
       if(!s) {previous='';return;}
       const values=[s.animal.thirst,s.animal.hunger,s.animal.heat,s.health].map(Math.round);
       const age=(s.life.age/config.environment.daySeconds).toFixed(1);
-      const activity=s.animal.behaviour==='Roaming'?s.socialMode:s.animal.behaviour;
+      const activity=s.animal.behaviour==='Roaming'
+        ? s.playRole==='Chasing'?`Playing · chasing Herbivore ${s.playTargetId!+1}`
+          :s.playRole==='Leading'?'Playing · leading the chase':s.socialMode
+        :s.animal.behaviour;
       const key=`${s.id}/${age}/${s.life.pregnancy!==null}/${activity}/${values}`;
       if(key===previous) return;previous=key;
       title.textContent=`Herbivore ${s.id+1}`;

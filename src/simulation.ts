@@ -32,6 +32,8 @@ export interface SimulationConfig {
 }
 export type Behaviour = 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
+  playTargetId:number|null;
+  playRole: 'Leading' | 'Chasing' | null;
   health: number;
   deprivation: { thirst:number; hunger:number; heat:number };
   life: { sex:'female'|'male'; age:number; pregnancy:number|null; fatherId:number|null;
@@ -81,6 +83,7 @@ export const simulationConfig: SimulationConfig = {
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
   const state: Simulation = {
+    playTargetId:null, playRole:null,
     health:100, deprivation:{thirst:0,hunger:0,heat:0},
     life: {sex:'female',age:reproductionConfig.maturityDays*c.environment.daySeconds,
       pregnancy:null,fatherId:null,motherId:null,mateId:null,nextMateAt:0},
@@ -410,7 +413,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
     }
     else {
       if (c.roaming && !s.travelRoute.length && s.time >= s.retryAt) beginRoaming(s, c);
-      if (a.behaviour === 'Roaming' && followRoute(s, s.travelRoute, c, dt)) a.behaviour = 'Resting';
+      if (a.behaviour === 'Roaming' && followRoute(s, s.travelRoute, c, dt*(s.playRole?1.25:1))) a.behaviour = 'Resting';
       return;
     }
   }
