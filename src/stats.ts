@@ -6,8 +6,6 @@ export function createStats(config:SimulationConfig) {
   const panel = document.createElement('aside');
   panel.className = 'water-stats';
   panel.innerHTML = '<strong>Watering holes</strong><span class="water-value"></span><meter min="0" aria-label="Available pond water"></meter><span class="cycles"></span>';
-  const legend = document.createElement('div'); legend.className = 'need-legend';
-  legend.innerHTML = '<span>Thirst</span> · <span>Hunger</span> · <span>Heat</span> · <span>Health</span>'; panel.append(legend);
   const grassSupply = document.createElement('span'); grassSupply.className = 'grass-supply'; panel.append(grassSupply);
   const population=document.createElement('span');population.className='grass-supply';panel.append(population);
   const weather = document.createElement('aside');
@@ -62,30 +60,42 @@ export function createStats(config:SimulationConfig) {
   };
 }
 
-// One small badge per animal: behaviour plus four narrow bars.
-export function createAnimalStats(id: number, config:SimulationConfig) {
-  const label = document.createElement('div'); label.className = 'herd-badge';
-  const caption = document.createElement('span'); label.append(caption);
-  const bars = ['Thirst','Hunger','Heat','Health'].map((name,i) => {
-    const meter = document.createElement('meter'); meter.min=0;meter.max=100;
-    meter.className = `need-${i}`; meter.setAttribute('aria-label',`${name}: higher means ${i===3?'better health':'greater need'}`);
-    label.append(meter); return meter;
+// One fixed inspector; no per-animal DOM or screen-position updates.
+export function createAnimalStats(config:SimulationConfig,onClose:()=>void) {
+  const panel=document.createElement('aside');panel.className='animal-stats';
+  panel.setAttribute('aria-label','Selected animal');
+  const hint=document.createElement('span');hint.textContent='Click an animal to inspect it';
+  const content=document.createElement('div');content.hidden=true;
+  const close=document.createElement('button');close.type='button';close.textContent='×';
+  close.setAttribute('aria-label','Clear animal selection');close.onclick=onClose;
+  const title=document.createElement('strong');
+  const life=document.createElement('span');life.className='animal-life';
+  const behaviour=document.createElement('span');behaviour.className='behaviour';
+  content.append(close,title,life,behaviour);
+  const bars=['Thirst','Hunger','Heat','Health'].map((name,i)=>{
+    const row=document.createElement('label'),value=document.createElement('span');
+    value.className='stat-value';row.append(name,value);
+    const meter=document.createElement('meter');meter.min=0;meter.max=100;meter.className=`need-${i}`;
+    meter.setAttribute('aria-label',`${name}: higher means ${i===3?'better health':'greater need'}`);
+    row.append(meter);content.append(row);return {value,meter};
   });
-  document.body.append(label);
+  const note=document.createElement('small');note.textContent='Higher needs mean discomfort. Higher health is better.';content.append(note);
+  panel.append(hint,content);document.body.append(panel);
+  let previous='';
   return {
-    update(s: Simulation, x: number, y: number, visible: boolean) {
-      label.hidden = !visible;
-      label.style.transform = `translate(${x}px,${y}px) translate(-50%,-100%)`;
-      const names: Record<string,string> = {'Seeking water':'To water','Waiting for water':'No water',
-        'Seeking grass':'To grass','Waiting for grass':'No grass','Seeking shade':'To shade','Cooling in shade':'Cooling'};
-      const behaviour = s.animal.behaviour === 'Roaming' ? s.socialMode : names[s.animal.behaviour] ?? s.animal.behaviour;
-      caption.textContent = s.animal.behaviour === 'Sleeping' ? 'z' : `${id+1}`;
-      const values = [s.animal.thirst,s.animal.hunger,s.animal.heat,s.health];
-      bars.forEach((bar,i)=>bar.value=values[i]);
-      const life=`${isAdult(s,config)?'Adult':'Calf'} ${s.life.sex} · Age ${(s.life.age/config.environment.daySeconds).toFixed(1)} days · Health ${Math.round(s.health)}%${s.life.pregnancy!==null?' · Pregnant':''}`;
-      label.title = `${life} · ${behaviour} · Thirst ${Math.round(values[0])}% · Hunger ${Math.round(values[1])}% · Heat ${Math.round(values[2])}%`;
-      label.setAttribute('aria-label',`Herbivore ${id+1}, ${life}, ${behaviour}. Thirst ${Math.round(values[0])}%, hunger ${Math.round(values[1])}%, heat ${Math.round(values[2])}%.`);
+    update(s:Simulation|undefined) {
+      content.hidden=!s;hint.hidden=!!s;
+      if(!s) {previous='';return;}
+      const values=[s.animal.thirst,s.animal.hunger,s.animal.heat,s.health].map(Math.round);
+      const age=(s.life.age/config.environment.daySeconds).toFixed(1);
+      const activity=s.animal.behaviour==='Roaming'?s.socialMode:s.animal.behaviour;
+      const key=`${s.id}/${age}/${s.life.pregnancy!==null}/${activity}/${values}`;
+      if(key===previous) return;previous=key;
+      title.textContent=`Herbivore ${s.id+1}`;
+      life.textContent=`${isAdult(s,config)?'Adult':'Calf'} ${s.life.sex} · ${age} days${s.life.pregnancy!==null?' · Pregnant':''}`;
+      behaviour.textContent=activity;
+      bars.forEach((bar,i)=>{bar.value.textContent=`${values[i]}%`;bar.meter.value=values[i];});
     },
-    dispose() { label.remove(); },
+    dispose(){panel.remove();},
   };
 }

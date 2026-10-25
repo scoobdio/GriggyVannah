@@ -123,10 +123,10 @@ The setup follows the [Vite guide](https://vite.dev/guide/) and uses [Babylon's 
 - `src/reproduction.ts`: nearby adult pairing, pregnancy, safe births, maternal recovery and calf growth.
 - `src/herd.ts`: herd creation, shared-resource ticking, local grouping, last-seen companion memory, solo excursions and separation.
 - `src/simulation.ts`: plain state, movement, water accounting, behaviour and fixed-step clock.
-- `src/ecosystem.ts`: connects simulation state to meshes and overhead DOM stats.
+- `src/ecosystem.ts`: connects simulation state to meshes and click selection for the corner inspector.
 - `src/animal.ts`: low-poly herbivore meshes and simulated-time walk, feeding, idle and resting animation.
 - `src/surface.ts`: deterministic procedural coverage textures and feathered ground overlays.
-- `src/stats.ts`, `src/style.css`: overhead thirst/behaviour label, water supply panel, environmental readout and display styling.
+- `src/stats.ts`, `src/style.css`: selected-animal inspector, water supply panel, environmental readout and display styling.
 - `tests/lifecycle.test.mjs`, `tests/reproduction.test.mjs`, `tests/peak-heat.test.mjs`, `tests/perception.test.mjs`, `tests/pacing.test.mjs`, `tests/herd.test.mjs`, `tests/grass.test.mjs`, `tests/roaming.test.mjs`, `tests/ponds.test.mjs`, `tests/simulation.test.mjs`, `tests/environment.test.mjs`, `tests/shade.test.mjs`: focused simulation, weather, timing and water-balance checks.
 - `package.json`, `package-lock.json`, `tsconfig.json`: commands, dependencies and strict TypeScript configuration.
 
@@ -149,7 +149,7 @@ Initially, startup, a small simulation module and scene creation helpers may be 
 
 ## First autonomous demonstration — implemented
 
-Implemented with one placeholder herbivore. Its overhead label shows behaviour, heat and thirst from 0–100% (higher means thirstier); the pond panel shows total supply, individual reserves, the selected pond and completed drinking cycles.
+Implemented with one placeholder herbivore. The selected-animal corner inspector now shows behaviour, heat and thirst from 0–100% (higher means greater need); the pond panel shows total supply, individual reserves, the selected pond and completed drinking cycles.
 
 Default rules in `src/simulation.ts`:
 
@@ -229,7 +229,7 @@ Five patches in `src/grass.ts` start full, with 920 food units in total. Patch f
 
 - Moisture starts at 0.65 and falls by 0.0008 per simulated second without rain. Below 0.2, food slowly withers at 0.035 units per second. The initial moisture buffer lasts about 1.9 simulated days without rain; fully wet soil lasts about 3.3 days before withering begins. These are arithmetic estimates, not multi-day test results.
 - Full-strength rain restores 0.025 moisture and 0.6 food per second per patch. Rates scale with rain intensity; drying and withering scale with its absence. Food cannot exceed patch capacity or fall below zero. All values are provisional gameplay tuning.
-- Hunger starts at 40, rises by 0.12 points per second and is bounded to 0–100. At 55 the animal seeks a nearby reachable stocked patch; grazing consumes up to 0.2 food units per second and restores four hunger points per unit, stopping at 15. Eating happens only inside the selected accessible patch. Compact overhead hunger bars and a total grass food readout make consumption visible.
+- Hunger starts at 40, rises by 0.12 points per second and is bounded to 0–100. At 55 the animal seeks a nearby reachable stocked patch; grazing consumes up to 0.2 food units per second and restores four hunger points per unit, stopping at 15. Eating happens only inside the selected accessible patch. Selected-animal hunger bars and a total grass food readout make consumption visible.
 - Travel uses existing obstacle-aware routes. Drinking and heat management take priority; thirst reaching its normal threshold interrupts grazing. Empty or inaccessible food produces “Waiting for grass” with bounded retries; rain regrowth can resume feeding. Active water waiting remains the priority when both food and water are unavailable.
 - Hunger does not yet cause injury or death. A separate fatigue need, more sophisticated competition and a sustainable herd food balance remain future work.
 
@@ -255,7 +255,7 @@ Existing pond reserves are deliberately retained, so slower consumption extends 
 
 - Social destinations are reconsidered every four simulated seconds. Most members favour positions within five units of the centre of companions they can currently see. Staggered 20-second solo windows in a 160-second period encourage occasional excursions about 20 units from the group, followed by regrouping. Needs always take priority; a solo intention does not guarantee uninterrupted solo travel.
 - Different feeding/shade spots, bank crowding penalties and gentle local separation reduce stacking. Movement still respects ponds, trunks and ground boundaries. This is loose grouping with radial local perception and remembered sightings, not a strict collision system or predator response.
-- Each animal has a small numbered badge with blue thirst, green hunger and orange heat bars. Hover a badge for behaviour and numeric needs. The shared panel gives the colour legend, herd size, solo intentions, total drinking cycles and resource stock. Offscreen badges are hidden. Badges stay directly above their animal, and full behaviour/numeric needs remain in accessible labels.
+- Overhead badges have been replaced with a single optional corner inspector; see Selecting an animal below. Shared resource and population diagnostics remain visible.
 - Focused checks cover seven independent animals, shared depletion, once-only weather updates, solo/regroup intentions, and 35 seconds of safe herd movement and multiple drinking cycles. Grass and pond regressions passed. A test initially referenced the wrong rainfall field; corrected checks pass. Chrome showed all seven animals, smaller badges, independent needs and drinking, with no captured console errors. Build/type checking passed with the existing bundle warning. No full-suite, multi-day or Pi run was performed.
 
 ### Reproduction and calves — implemented
@@ -291,7 +291,7 @@ Four scattered stylised acacia trees of varied height (2.7–7.2 units) and cano
 - Heat is a bounded 0–100 stat, starting at 20. Direct exposure scales with ambient temperature above 24 °C, daylight and absence of rain. Baseline configured heating is 1 point per simulated second. A smooth sixfold peak multiplier at 14:00 tapers back to baseline at 11:00 and 17:00; actual gain still scales with temperature, daylight and rain. Low exposure permits passive cooling.
 - Seek shade at heat 60; normally resume other activities at 25. During clear hot conditions around 12:12–15:48, animals already sheltering stay in shade even after cooling, rather than immediately walking back into the sun. Urgent thirst still interrupts shelter; rain and the end of the peak window release comfortable animals. Separate thresholds prevent rapid switching. Shade cools at 1.5 points per second. Rain and night reduce exposure and end unnecessary shade-seeking.
 - Choose a nearby accessible canopy resting spot using obstacle-aware waypoint routes. A small visibility graph routes around pond interiors and tree trunks; water selection no longer requires a route via the original resting spot. Resting spots sit away from the trunk, inside the canopy footprint.
-- At the resting spot, the herbivore lowers its body to suggest sitting and the label reads “Cooling in shade.” The overhead heat meter makes recovery visible.
+- At the resting spot, the herbivore lowers its body to suggest sitting and the label reads “Cooling in shade.” The selected-animal heat meter makes recovery visible.
 - Thirst at 85 or above interrupts cooling when reachable pond water is available. An empty or inaccessible pond does not prevent cooling; drinking resumes when supply returns. Active drinking finishes before seeking shade.
 - If no safe shade is available, retry at a bounded interval while continuing existing behaviour. Tree locations and simulated shade footprints are static; canopies sway visually; moving/removing trees and complex terrain navigation remain outside this increment.
 - Heat does not increase thirst; prolonged extreme heat now damages health and can cause death. Hunger and grazing are implemented as a separate need. The larger, initially full reserves described below replace the earlier small-pond defaults.
@@ -372,9 +372,16 @@ Implemented in `src/lifecycle.ts`, `src/herd.ts`, `src/animal.ts` and `src/stats
 - Health stays within 0–100. Each need at 95 or above has its own continuous 15-second grace period, then costs 0.6 health per second. Several severe needs stack; dropping below 95 resets that need's grace period. Calves take half this damage.
 - With all needs below 60, health regenerates at up to 0.3 per second. Recovery declines linearly after maturity (day 3), reaching zero at age 24 days. At 30 days, irreversible old-age decline costs 0.25 health per second. These compressed lifespans are game tuning, not ecological claims.
 - Healthy, comfortable calves prefer locally visible calves, with short daytime play bouts (12 seconds per 40-second cycle), changing destinations and a light bounding animation. Needs and sleep retain priority; mother-following remains the fallback. Calves still do not take adult solo excursions.
-- At zero health an animal permanently leaves the living herd before reproduction is checked. Its badge disappears and its body rests on its side for 120 simulated seconds, or until its meat is consumed. Adults provide 40 meat units; calf reserves scale with body size. `consumeCarrion` checks range, remaining food and expiry, ready for future predator feeding. Predators themselves are not implemented yet.
-- Animal badges include a fourth, rose-coloured health bar (higher is healthier); hover details include age and health. Population diagnostics show deaths and current carcasses. Views are tracked by permanent IDs, and expired bodies release their meshes/materials. The independent world clock keeps weather and resources running through extinction; there is no silent repopulation.
+- At zero health an animal permanently leaves the living herd before reproduction is checked. Its selection clears and its body rests on its side for 120 simulated seconds, or until its meat is consumed. Adults provide 40 meat units; calf reserves scale with body size. `consumeCarrion` checks range, remaining food and expiry, ready for future predator feeding. Predators themselves are not implemented yet.
+- The selected-animal inspector includes a health bar (higher is healthier), age and behaviour. Population diagnostics show deaths and current carcasses. Views are tracked by permanent IDs, and expired bodies release their meshes/materials. The independent world clock keeps weather and resources running through extinction; there is no silent repopulation.
 
 Validation uses short, seeded boundary scenarios: grace/reset, recovery at different ages, calf resistance, old-age death, no post-death birth, carrion bounds/expiry, empty-herd weather and calf peer preference. No multi-day balancing or Pi performance claim is made.
 
 Lifecycle verification (25 October 2026): all 21 focused lifecycle, reproduction, herd and perception checks passed. Two older clock-seeding fixtures were updated for the independent world clock. Type checking and the production build passed (existing large-bundle warning). Chrome spot checks confirmed a visible resting carcass, removal of its badge, six surviving adults, death/carcass counts and three calves displaying Playing with health bars; no console errors were captured in the death preview. Carcass expiry was checked in logic by seeding its time boundary, not waiting through a long browser run. No full suite, multi-day run or Pi test was performed.
+
+
+## Selecting an animal
+
+Click a visible living herbivore to show its live stats in the bottom-left corner: identity, sex, calf/adult stage, age, pregnancy, behaviour, thirst, hunger, heat and health. A subtle warm highlight identifies the selected animal. Click another animal to switch, or clear selection with the close button, Escape or a click on the scenery. Selection clears if the animal dies. All overhead badges have been removed; the simulation remains fully autonomous without selection. The panel uses one reusable DOM view and permanent animal IDs, so births and deaths do not change which animal is inspected.
+
+Selection verification: production build and type check passed (existing large-bundle warning). A Chrome spot check confirmed clicking a visible herbivore opens its live values, overhead badges are absent, and Escape clears selection. The first click check exposed missing Babylon ray registration; this was fixed and the interaction rechecked. Death-triggered clearing and narrow-screen layout were inspected in code, not exercised in the browser. No simulation suite or long run was needed for this UI change.

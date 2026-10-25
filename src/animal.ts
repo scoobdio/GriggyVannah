@@ -44,8 +44,11 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
   const tail=ellipsoid('tail',body,0,0.95,-0.88,0.09,0.57,0.1,dark);tail.rotation.x=-0.3;
   const shadow=softGround(scene,`herbivore-${id}-shadow`,0,0,0.9,shadowTexture,'#343a25',0.3,0.029).mesh;
   shadow.scaling.z=1.4;
+  root.getChildMeshes().forEach(mesh=>{mesh.metadata={animalId:id};});
+  let highlighted=false;
   let lastTime=-1,stride=id*1.9;
   return { root,head,
+    select(selected:boolean) { if(selected===highlighted) return; highlighted=selected;coat.emissiveColor.set(selected?0.18:0,selected?0.13:0,selected?0.035:0); },
     dispose() { root.dispose();shadow.material?.dispose();shadow.dispose();coat.dispose();dark.dispose();cream.dispose(); },
     corpse(carcass:Carcass) {
       const s=carcass.animal, scale=growthScale(s,config);

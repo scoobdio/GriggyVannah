@@ -1,9 +1,8 @@
+import '@babylonjs/core/Culling/ray';
 import { lifecycleConfig, reproductionConfig } from './config';
-import { growthScale } from './reproduction';
 import { createHerd, stepHerd } from './herd';
 import type { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { softTexture } from './surface';
 import { createHerbivore } from './animal';
 import { createGrassView } from './grassView';
@@ -40,14 +39,24 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
   }
   const animalShadow = softTexture(scene,'animal-contact-shadow');
   const animals = new Map<number,ReturnType<typeof createHerbivore>>();
-  const badges = new Map<number,ReturnType<typeof createAnimalStats>>();
+  let selectedId:number|null=null;
+  const details=createAnimalStats(config,()=>{selectedId=null;});
   const stats = createStats(config);
   const weather = createWeatherView(scene);
   const updateGrassView = createGrassView(scene, config.grass);
   const advance = createSimulationClock(dt => stepHerd(herd, config, dt));
   const engine = scene.getEngine();
-  const anchor = new Vector3();
-  const identity = Matrix.Identity();
+  const canvas=engine.getRenderingCanvas()!;
+  const selectAnimal=(event:MouseEvent)=>{
+    if(event.button!==0) return;
+    const rect=canvas.getBoundingClientRect();
+    const hit=scene.pick(event.clientX-rect.left,event.clientY-rect.top);
+    const id=hit?.pickedMesh?.metadata?.animalId;
+    selectedId=herd.members.some(m=>m.id===id)?id:null;
+  };
+  const clearSelection=(event:KeyboardEvent)=>{if(event.key==='Escape') selectedId=null;};
+  canvas.addEventListener('click',selectAnimal);
+  window.addEventListener('keydown',clearSelection);
   let paused = document.hidden;
   const onVisibility = () => { paused = true; };
   document.addEventListener('visibilitychange', onVisibility);
@@ -60,14 +69,15 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
     const living=new Set(herd.members.map(m=>m.id));
     const retained=new Set([...living,...herd.carcasses.map(b=>b.id)]);
     for(const [id,view] of animals) if(!retained.has(id)) {view.dispose();animals.delete(id);}
-    for(const [id,badge] of badges) if(!living.has(id)) {badge.dispose();badges.delete(id);}
+    if(selectedId!==null && !living.has(selectedId)) selectedId=null;
     for(const member of herd.members) {
       if(!animals.has(member.id)) animals.set(member.id,createHerbivore(scene,member.id,animalShadow,config));
-      if(!badges.has(member.id)) badges.set(member.id,createAnimalStats(member.id,config));
+      animals.get(member.id)!.select(member.id===selectedId);
       animals.get(member.id)!.update(member);
     }
     for(const body of herd.carcasses) {
       if(!animals.has(body.id)) animals.set(body.id,createHerbivore(scene,body.id,animalShadow,config));
+      animals.get(body.id)!.select(false);
       animals.get(body.id)!.corpse(body);
     }
     // Keep the bank fixed: colour/visibility reflects stock, not interaction geometry.
@@ -77,21 +87,16 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
     });
   });
   scene.onAfterRenderObservable.add(() => {
-    const canvas = engine.getRenderingCanvas()!;
-    const viewport = scene.activeCamera!.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight);
-    herd.members.forEach(member => {
-      anchor.set(member.animal.x, 2.3*growthScale(member,config), member.animal.z);
-      const screen = Vector3.Project(anchor, identity, scene.getTransformMatrix(), viewport);
-      badges.get(member.id)!.update(member,screen.x,screen.y,
-        screen.z>0 && screen.z<1 && screen.x>=0 && screen.x<=canvas.clientWidth && screen.y>=0 && screen.y<=canvas.clientHeight);
-    });
+    details.update(herd.members.find(m=>m.id===selectedId));
     stats.update(state,herd.members,herd.solo,herd.births,herd.deaths,herd.carcasses.length);
   });
   scene.onDisposeObservable.add(() => {
     stats.dispose();
     animals.forEach(view=>view.dispose());
     animalShadow.dispose();
-    badges.forEach(badge=>badge.dispose());
+    details.dispose();
+    canvas.removeEventListener('click',selectAnimal);
+    window.removeEventListener('keydown',clearSelection);
     document.removeEventListener('visibilitychange', onVisibility);
   });
 }
