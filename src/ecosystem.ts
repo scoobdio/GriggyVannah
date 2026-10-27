@@ -1,5 +1,5 @@
 import '@babylonjs/core/Culling/ray';
-import { lifecycleConfig, reproductionConfig } from './config';
+import { createSettingsPanel, loadSettings } from './settingsPanel';
 import { createHerd, stepHerd } from './herd';
 import type { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -11,22 +11,23 @@ import { createSimulationClock, simulationConfig } from './simulation';
 import { createWeatherView } from './weatherView';
 
 export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandscape: (time:number,rain:number)=>void) {
-  const config = { ...simulationConfig };
+  const config = structuredClone(simulationConfig);
+  const settingsMessage=loadSettings(config);
   // Development-only visual scenarios; production always starts from normal defaults.
   const preview = import.meta.env.DEV ? new URLSearchParams(location.search).get('preview') : null;
   if (preview === 'night' || preview === 'rain' || preview === 'heat') {
     config.environment = { ...config.environment, startHour: preview === 'night' ? 22 : 14,
-      clearSeconds: preview === 'rain' ? 0 : 10000,
-      rainSeconds: 10000, transitionSeconds: 0 };
+      clearSeconds: preview === 'rain' ? 0 : 3600,
+      rainSeconds: 600, transitionSeconds: 0 };
   }
-  const herd = createHerd(config);
-  const state = herd.world;
+  let herd = createHerd(config);
+  let state = herd.world;
   const first=herd.members[0];
-  if(preview==='death') {first.life.age=lifecycleConfig.senescenceDays*config.environment.daySeconds;first.health=0.1;}
+  if(preview==='death') {first.life.age=config.lifecycle.senescenceDays*config.environment.daySeconds;first.health=0.1;}
   if(preview==='play') herd.members.slice(0,3).forEach(m=>{m.life.age=0; m.animal.hunger=20;m.animal.thirst=20;m.animal.heat=10;});
   if (preview === 'birth') {
     const mother=herd.members[2];
-    mother.life.pregnancy=reproductionConfig.gestationDays*config.environment.daySeconds-0.5;
+    mother.life.pregnancy=config.reproduction.gestationDays*config.environment.daySeconds-0.5;
     mother.life.mateId=1;mother.animal.hunger=20;mother.animal.thirst=20;
   }
   if (preview === 'grazing') { first.animal.hunger = 85; first.animal.thirst = 10; }
@@ -44,7 +45,12 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
   const stats = createStats(config);
   const weather = createWeatherView(scene);
   const updateGrassView = createGrassView(scene, config.grass);
-  const advance = createSimulationClock(dt => stepHerd(herd, config, dt));
+  let advance = createSimulationClock(dt => stepHerd(herd, config, dt));
+  const settings=createSettingsPanel(config,()=>{
+    animals.forEach(view=>view.dispose());animals.clear();selectedId=null;
+    herd=createHerd(config);state=herd.world;
+    advance=createSimulationClock(dt=>stepHerd(herd,config,dt));
+  },settingsMessage);
   const engine = scene.getEngine();
   const canvas=engine.getRenderingCanvas()!;
   const selectAnimal=(event:MouseEvent)=>{
@@ -61,7 +67,7 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
   const onVisibility = () => { paused = true; };
   document.addEventListener('visibilitychange', onVisibility);
   scene.onBeforeRenderObservable.add(() => {
-    if (!document.hidden && !paused) advance(engine.getDeltaTime() / 1000);
+    if (!document.hidden && !paused && !settings.isPaused()) advance(engine.getDeltaTime() / 1000);
     paused = document.hidden;
     weather.update(state.environment, state.time);
     updateGrassView(state.grass,state.time);
@@ -91,6 +97,7 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
     stats.update(state,herd.members,herd.solo,herd.births,herd.deaths,herd.carcasses.length);
   });
   scene.onDisposeObservable.add(() => {
+    settings.dispose();
     stats.dispose();
     animals.forEach(view=>view.dispose());
     animalShadow.dispose();

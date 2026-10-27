@@ -10,11 +10,11 @@ export const grassPatches: GrassPatch[] = [
 // Rates per simulated second. Moisture buffers short dry spells; bare patches can regrow.
 export const grassConfig = { dryingRate: 0.0008, wettingRate: 0.025, dryThreshold: 0.2,
   witherRate: 0.035, rainGrowthRate: 0.6 };
-export function updateGrass(state: GrassState, patch: GrassPatch, rain: number, dt: number) {
+export function updateGrass(state: GrassState, patch: GrassPatch, rain: number, dt: number, rates=grassConfig) {
   const intensity = Math.max(0, Math.min(1, rain));
   state.moisture = Math.max(0, Math.min(1, state.moisture +
-    (intensity * grassConfig.wettingRate - (1-intensity) * grassConfig.dryingRate) * dt));
-  const growth = intensity * grassConfig.rainGrowthRate;
-  const withering = state.moisture < grassConfig.dryThreshold ? (1-intensity) * grassConfig.witherRate : 0;
+    (intensity * rates.wettingRate - (1-intensity) * rates.dryingRate) * dt));
+  const growth = intensity * rates.rainGrowthRate;
+  const withering = state.moisture < rates.dryThreshold ? (1-intensity) * rates.witherRate : 0;
   state.food = Math.max(0, Math.min(patch.capacity, state.food + (growth-withering)*dt));
 }

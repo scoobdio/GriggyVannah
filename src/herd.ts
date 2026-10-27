@@ -35,7 +35,7 @@ export function updateSocialTargets(herd: Herd, c: SimulationConfig) {
     const previousRole=s.playRole;
     s.playRole=null;s.playTargetId=null;
     if(!isAdult(s,c)) { if(playful) neighbours=peers; else if(mother) neighbours=[mother]; }
-    const playing=playful && time%40<12;
+    const playing=playful && time%c.play.periodSeconds<c.play.durationSeconds;
     let centre:Point={...s.animal};
     if(neighbours.length) {
       centre=neighbours.reduce((p,m)=>({x:p.x+m.animal.x,z:p.z+m.animal.z}),{x:0,z:0});

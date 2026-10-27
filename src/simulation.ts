@@ -1,6 +1,6 @@
-import { grassPatches, updateGrass } from './grass.ts';
+import { grassPatches, grassConfig, updateGrass } from './grass.ts';
 import type { GrassPatch, GrassState } from './grass.ts';
-import { pondConfigs, worldConfig, reproductionConfig } from './config.ts';
+import { pondConfigs, worldConfig, lifecycleConfig, reproductionConfig } from './config.ts';
 import type { PondConfig } from './config.ts';
 import { shadeAreas } from './habitat.ts';
 import type { ShadeArea } from './habitat.ts';
@@ -9,6 +9,10 @@ import type { Environment, EnvironmentConfig } from './environment.ts';
 
 export interface Point { x: number; z: number }
 export interface SimulationConfig {
+  reproduction:typeof reproductionConfig;
+  lifecycle:typeof lifecycleConfig;
+  grassRates:typeof grassConfig;
+  play:{speedMultiplier:number;periodSeconds:number;durationSeconds:number};
   perception: { radius: number; memorySeconds: number; interval: number };
   ponds: PondConfig[];
   grass: GrassPatch[];
@@ -67,6 +71,8 @@ export interface Simulation {
   shadeRetryAt: number;
 }
 export const simulationConfig: SimulationConfig = {
+  reproduction:reproductionConfig, lifecycle:lifecycleConfig, grassRates:grassConfig,
+  play:{speedMultiplier:1.25,periodSeconds:40,durationSeconds:12},
   perception: { radius: 24, memorySeconds: 600, interval: 1 },
   ponds: pondConfigs,
   grass: grassPatches,
@@ -85,7 +91,7 @@ export function createSimulation(c: SimulationConfig): Simulation {
   const state: Simulation = {
     playTargetId:null, playRole:null,
     health:100, deprivation:{thirst:0,hunger:0,heat:0},
-    life: {sex:'female',age:reproductionConfig.maturityDays*c.environment.daySeconds,
+    life: {sex:'female',age:c.reproduction.maturityDays*c.environment.daySeconds,
       pregnancy:null,fatherId:null,motherId:null,mateId:null,nextMateAt:0},
     waterMemory: {}, grassMemory: {}, shadeMemory: {}, nextObservation: 0,
     lastGroup: null, socialMode: 'With herd', searchRoute: [],
@@ -311,7 +317,7 @@ export function peakHeatStrength(hour:number) {
 export function updateWorldResources(s:Simulation,c:SimulationConfig,dt:number) {
   const weatherChange = (s.environment.rainfall - s.environment.evaporation) * dt;
   s.ponds.forEach((pond, i) => { pond.water = Math.max(0, Math.min(c.ponds[i].capacity, pond.water + weatherChange)); });
-  s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt));
+  s.grass.forEach((stock,i) => updateGrass(stock, c.grass[i], s.environment.rain, dt, c.grassRates));
 }
 
 export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, updateResources = true) {
@@ -413,7 +419,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
     }
     else {
       if (c.roaming && !s.travelRoute.length && s.time >= s.retryAt) beginRoaming(s, c);
-      if (a.behaviour === 'Roaming' && followRoute(s, s.travelRoute, c, dt*(s.playRole?1.25:1))) a.behaviour = 'Resting';
+      if (a.behaviour === 'Roaming' && followRoute(s, s.travelRoute, c, dt*(s.playRole?c.play.speedMultiplier:1))) a.behaviour = 'Resting';
       return;
     }
   }

@@ -1,10 +1,9 @@
-import { reproductionConfig as r } from './config.ts';
 import { createSimulation, observeResources, insideGround, clearRoute, distance } from './simulation.ts';
 import type { Simulation, SimulationConfig, Point } from './simulation.ts';
 
-export const isAdult = (s:Simulation,c:SimulationConfig) => s.life.age >= r.maturityDays*c.environment.daySeconds;
+export const isAdult = (s:Simulation,c:SimulationConfig) => s.life.age >= c.reproduction.maturityDays*c.environment.daySeconds;
 export function growthScale(s:Simulation,c:SimulationConfig) {
-  return 0.55+0.45*Math.min(1,s.life.age/(r.maturityDays*c.environment.daySeconds));
+  return 0.55+0.45*Math.min(1,s.life.age/(c.reproduction.maturityDays*c.environment.daySeconds));
 }
 const comfortable = (s:Simulation,limit:number) =>
   s.health>=60 && s.animal.thirst<limit && s.animal.hunger<limit && s.animal.heat<limit;
@@ -21,12 +20,12 @@ export function updateReproduction(members:Simulation[],c:SimulationConfig,alloc
   const births:Simulation[]=[];
   const time=members[0]?.time ?? 0;
   const ready=(s:Simulation) => isAdult(s,c) && time>=s.life.nextMateAt &&
-    comfortable(s,r.conceptionNeedLimit) &&
+    comfortable(s,c.reproduction.conceptionNeedLimit) &&
     ['Resting','Roaming','Cooling in shade'].includes(s.animal.behaviour);
   for(const mother of members) {
     if(mother.life.sex!=='female') continue;
     if(mother.life.pregnancy !== null) {
-      if(mother.life.pregnancy<r.gestationDays*c.environment.daySeconds || !comfortable(mother,r.birthNeedLimit)) continue;
+      if(mother.life.pregnancy<c.reproduction.gestationDays*c.environment.daySeconds || !comfortable(mother,c.reproduction.birthNeedLimit)) continue;
       const position=birthPosition(mother,[...members,...births],c);
       if(!position) continue; // Retain the pregnancy and retry; never spawn inside an obstacle.
       const calf=createSimulation({...c,home:position});calf.id=allocateId();
@@ -40,14 +39,14 @@ export function updateReproduction(members:Simulation[],c:SimulationConfig,alloc
       calf.roamSequence=calf.id*11;
       births.push(calf);
       mother.life.pregnancy=null;mother.life.mateId=null;
-      mother.life.nextMateAt=time+r.recoveryDays*c.environment.daySeconds;
-      mother.animal.hunger=Math.min(100,mother.animal.hunger+r.birthHungerCost);
-      mother.animal.thirst=Math.min(100,mother.animal.thirst+r.birthThirstCost);
+      mother.life.nextMateAt=time+c.reproduction.recoveryDays*c.environment.daySeconds;
+      mother.animal.hunger=Math.min(100,mother.animal.hunger+c.reproduction.birthHungerCost);
+      mother.animal.thirst=Math.min(100,mother.animal.thirst+c.reproduction.birthThirstCost);
       continue;
     }
     if(!ready(mother)) continue;
     const father=members.find(m=>m.life.sex==='male' && ready(m) &&
-      distance(m.animal,mother.animal)<=Math.min(r.mateRange,c.perception.radius) && clearRoute(mother.animal,m.animal,c));
+      distance(m.animal,mother.animal)<=Math.min(c.reproduction.mateRange,c.perception.radius) && clearRoute(mother.animal,m.animal,c));
     if(!father) continue;
     mother.life.pregnancy=0;mother.life.mateId=father.id;
     // Short courtship recovery for the male prevents one tick inseminating the whole herd.
