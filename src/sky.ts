@@ -17,7 +17,7 @@ Effect.ShadersStore['savannahSkyFragmentShader'] = `
 precision highp float;
 varying vec3 direction;
 uniform float daylight;
-uniform float rain;
+uniform float cloudCover;
 uniform float clock;
 uniform float hour;
 float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
@@ -42,12 +42,12 @@ void main() {
  vec2 starUV=vec2(atan(starDir.x,starDir.z),asin(clamp(starDir.y,-1.0,1.0)));
  vec2 cells=starUV*180.0;
  float star=step(0.988,hash(floor(cells)))*(1.0-smoothstep(0.02,0.10,length(fract(cells)-0.5)));
- color+=vec3(star)*(1.0-light)*(1.0-rain)*smoothstep(0.02,0.16,height);
+ color+=vec3(star)*(1.0-light)*(1.0-cloudCover)*smoothstep(0.02,0.16,height);
  float sunPhase=(hour-6.0)/12.0*3.14159;
  vec3 sunDir=normalize(vec3(-0.55+0.65*cos(sunPhase),0.04+0.12*sin(sunPhase),0.85));
  float sunDist=length(d-sunDir);
  float sunVisible=smoothstep(5.8,6.3,hour)*(1.0-smoothstep(17.7,18.2,hour));
- color+=vec3(1.0,0.72,0.30)*(exp(-sunDist*18.0)*0.35+1.0-smoothstep(0.022,0.027,sunDist))*sunVisible*(1.0-rain);
+ color+=vec3(1.0,0.72,0.30)*(exp(-sunDist*18.0)*0.35+1.0-smoothstep(0.022,0.027,sunDist))*sunVisible*(1.0-cloudCover);
  // Mirror the stylised daytime arc, shifted twelve hours into the night.
  float moonPhase=mod(hour+6.0,24.0)/12.0*3.14159265359;
  vec3 moonDir=normalize(vec3(-0.55+0.65*cos(moonPhase),0.04+0.12*sin(moonPhase),0.85));
@@ -57,21 +57,21 @@ void main() {
  vec3 moonUp=cross(moonDir,moonRight);
  vec2 moonUV=vec2(dot(d-moonDir,moonRight),dot(d-moonDir,moonUp));
  float crater=0.85+0.15*noise(moonUV*180.0);
- color=mix(color,vec3(0.87,0.91,0.96)*crater,moon*(1.0-light)*(1.0-rain));
+ color=mix(color,vec3(0.87,0.91,0.96)*crater,moon*(1.0-light)*(1.0-cloudCover));
  vec2 cloudUV=d.xz/max(d.y+0.22,0.12)*2.0+vec2(clock*0.008,0);
  float cloudNoise=noise(cloudUV)*0.65+noise(cloudUV*2.1)*0.35;
- float cloud=smoothstep(mix(0.65,0.22,rain),mix(0.82,0.55,rain),cloudNoise);
+ float cloud=smoothstep(mix(0.65,0.22,cloudCover),mix(0.82,0.55,cloudCover),cloudNoise);
  cloud*=smoothstep(-0.02,0.08,d.y);
- vec3 cloudColor=mix(mix(vec3(0.23,0.28,0.38),vec3(0.98,0.96,0.90),light),vec3(0.29,0.34,0.40),rain);
- color=mix(color,cloudColor,cloud*mix(0.75,0.98,rain));
- color=mix(color,vec3(0.35,0.40,0.46),rain*0.25);
+ vec3 cloudColor=mix(mix(vec3(0.23,0.28,0.38),vec3(0.98,0.96,0.90),light),vec3(0.29,0.34,0.40),cloudCover);
+ color=mix(color,cloudColor,cloud*mix(0.75,0.98,cloudCover));
+ color=mix(color,vec3(0.35,0.40,0.46),cloudCover*0.25);
  gl_FragColor=vec4(color,1.0);
 }
 `;
 export function createSky(scene: Scene) {
   const sky = CreateSphere('sky-dome', { diameter: 360, segments: 16 }, scene);
   const shader = new ShaderMaterial('procedural-sky', scene, 'savannahSky', {
-    attributes: ['position'], uniforms: ['worldViewProjection','daylight','rain','clock','hour'],
+    attributes: ['position'], uniforms: ['worldViewProjection','daylight','cloudCover','clock','hour'],
   });
   shader.backFaceCulling = false;
   shader.disableDepthWrite = true;
@@ -84,7 +84,7 @@ export function createSky(scene: Scene) {
     hill.position.set(-80+i*13,0,58+(i%3)*8); hill.material=hills;
   }
   return (e:Environment,time:number) => {
-    shader.setFloat('daylight',e.daylight); shader.setFloat('rain',e.rain);
+    shader.setFloat('daylight',e.daylight); shader.setFloat('cloudCover',e.cloudCover);
     shader.setFloat('clock',time); shader.setFloat('hour',e.hour);
   };
 }

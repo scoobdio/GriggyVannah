@@ -38,7 +38,9 @@ export function createStats(config:SimulationConfig) {
       const e = s.environment;
       const minutes = Math.floor(e.hour * 60);
       const clock = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-      const description = e.rain > 0 ? 'Rain' : e.daylight > 0.01 ? 'Sunshine' : 'Clear night';
+      const description = e.rain > 0.01 ? (e.rain < 0.4 ? 'Light rain' : 'Rain')
+        : e.cloudCover > 0.7 ? 'Overcast' : e.cloudCover > 0.1 ? 'Cloudy'
+        : e.daylight > 0.01 ? 'Sunshine' : 'Clear night';
       const degrees = e.temperature.toFixed(1);
       const flow = e.rainfall > 0 ? `Rain filling +${e.rainfall.toFixed(2)}/s`
         : e.evaporation > 0 ? `Evaporating −${e.evaporation.toFixed(2)}/s` : 'No weather inflow or loss';

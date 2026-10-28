@@ -29,12 +29,12 @@ test('clock wraps through midnight and a five-minute day; nights have no sunligh
 });
 test('rain ramps in and out, cools the baseline and repeats without discontinuity', () => {
   assert.equal(environmentAt(80, e).rain, 0);
-  near(environmentAt(82.5, e).rain, 0.5);
-  assert.equal(environmentAt(85, e).rain, 1);
-  near(environmentAt(117.5, e).rain, 0.5);
+  near(environmentAt(85, e).rain, 0.5);
+  assert.equal(environmentAt(90, e).rain, 1);
+  near(environmentAt(115, e).rain, 0.5);
   assert.equal(environmentAt(120, e).rain, 0);
-  near(environmentAt(202.5, e).rain, 0.5);
-  const rainy = environmentAt(85, e);
+  near(environmentAt(205, e).rain, 0.5);
+  const rainy = environmentAt(90, e);
   near(rainy.temperature, clearTemperature(rainy.hour, e) - e.rainCooling);
 });
 test('evaporation is slow, peaks at 14:00 and stops at night and in rain', () => {
@@ -42,7 +42,7 @@ test('evaporation is slow, peaks at 14:00 and stops at night and in rain', () =>
   near(environmentAt(0, { ...e, startHour:14 }).evaporation, 0.06);
   const wet = environmentAt(1, { ...e, startHour:14, clearSeconds:0, transitionSeconds:0 });
   assert.equal(wet.evaporation, 0);
-  assert.equal(wet.rainfall, 4);
+  assert.equal(wet.rainfall, e.rainfallRate);
 });
 test('weather water balance is independent of drinking and capped at both ends', () => {
   const dry = { ...c, thirstRate: 0, ponds: [{ ...c.ponds[0], initialWater: 50 }],
@@ -52,7 +52,7 @@ test('weather water balance is independent of drinking and capped at both ends',
   near(s.ponds[0].water, 50 - s.environment.evaporation / 60);
   s.ponds[0].water = 0; stepSimulation(s, dry, 1/60); assert.equal(s.ponds[0].water, 0);
   const wet = { ...dry, environment: { ...e, clearSeconds: 0, transitionSeconds: 0 } };
-  stepSimulation(s, wet, 1/60); near(s.ponds[0].water, 4/60);
+  stepSimulation(s, wet, 1/60); near(s.ponds[0].water, e.rainfallRate/60);
   s.ponds[0].water = 99.99; stepSimulation(s, wet, 1/60); assert.equal(s.ponds[0].water, 100);
 });
 test('six simulated days preserve bounds and recover from dry spells', () => {
@@ -68,4 +68,34 @@ test('six simulated days preserve bounds and recover from dry spells', () => {
   }
   assert.ok(waited && resumed);
   assert.ok(s.cycles > 20);
+});
+
+test('clouds gather before rain, linger after it and clear continuously across cycles',()=>{
+ assert.equal(environmentAt(0,e).cloudCover,0);
+ assert.equal(environmentAt(60,e).cloudCover,0);
+ near(environmentAt(70,e).cloudCover,0.5);
+ assert.equal(environmentAt(70,e).rain,0);
+ assert.equal(environmentAt(80,e).cloudCover,1);
+ near(environmentAt(85,e).rain,0.5);
+ assert.equal(environmentAt(120,e).cloudCover,1);
+ assert.equal(environmentAt(120,e).rain,0);
+ near(environmentAt(130,e).cloudCover,0.5);
+ assert.equal(environmentAt(140,e).cloudCover,0);
+ for(const boundary of [60,80,90,110,120,140,180,200,240]) {
+  const before=environmentAt(boundary-0.001,e),after=environmentAt(boundary+0.001,e);
+  assert.ok(Math.abs(before.cloudCover-after.cloudCover)<0.001);
+  assert.ok(Math.abs(before.rain-after.rain)<0.001);
+ }
+});
+test('short dry spells and continuous showers keep cloud and rain values bounded',()=>{
+ assert.equal(environmentAt(79,{...e,rainSeconds:0}).cloudCover,0);
+ for(const clearSeconds of [0,1,10]) for(const rainSeconds of [10,40]) {
+  const c={...e,clearSeconds,rainSeconds};
+  for(const time of [0,0.5,1,5,9.9,10,20,39.9,40,50,80]) {
+   const s=environmentAt(time,c);
+   assert.ok(s.cloudCover>=0 && s.cloudCover<=1);assert.ok(s.rain>=0 && s.rain<=1);
+   if(s.rain>0) assert.equal(s.cloudCover,1);
+   near(s.rainfall,s.rain*c.rainfallRate);
+  }
+ }
 });

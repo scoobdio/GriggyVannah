@@ -31,9 +31,9 @@ export function createWeatherView(scene: Scene) {
   return {
     update(e: Environment, time: number) {
       updateSky(e, time);
-      light.intensity = (0.35 + 0.7 * e.daylight) * (1 - 0.25 * e.rain);
+      light.intensity = (0.35 + 0.7 * e.daylight) * (1 - 0.45 * e.cloudCover);
       Color4.LerpToRef(night, day, e.daylight, clear);
-      Color4.LerpToRef(clear, wet, e.rain * 0.55, scene.clearColor);
+      Color4.LerpToRef(clear, wet, e.cloudCover * 0.55, scene.clearColor);
       rainMesh.setEnabled(e.rain > 0.001);
       if (e.rain <= 0.001) return;
       rainMesh.alpha = e.rain * (0.25 + e.daylight * 0.22);
@@ -47,7 +47,9 @@ export function createWeatherView(scene: Scene) {
         const fall = time * seeds[i].speed;
         const x = (((seeds[i].x + fall * 0.075) % 1) * 2.4 - 1.2) * halfWidth;
         const y = (1.2 - ((seeds[i].y + fall) % 1) * 2.4) * halfHeight;
-        const length = halfHeight * (0.035 + (i % 5) * 0.009);
+        // Fade individual streaks in as drizzle thickens, without allocating particles.
+        const amount = Math.max(0, Math.min(1, (e.rain - seeds[i].y * 0.85) / 0.15));
+        const length = halfHeight * (0.035 + (i % 5) * 0.009) * amount;
         lines[i][0].set(x, y, depth);
         lines[i][1].set(x - length * 0.22, y + length, depth);
       }

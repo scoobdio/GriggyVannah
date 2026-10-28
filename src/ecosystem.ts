@@ -20,6 +20,8 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
       clearSeconds: preview === 'rain' ? 0 : 3600,
       rainSeconds: 600, transitionSeconds: 0 };
   }
+  if(preview==='weather') config.environment={...config.environment,startHour:12,
+    clearSeconds:20,rainSeconds:20,transitionSeconds:8};
   let herd = createHerd(config);
   let state = herd.world;
   const first=herd.members[0];
@@ -32,7 +34,7 @@ export function attachEcosystem(scene: Scene, waterMeshes: Mesh[], updateLandsca
   }
   if (preview === 'grazing') { first.animal.hunger = 85; first.animal.thirst = 10; }
   if (preview === 'heat') { first.animal.heat = 90; first.animal.thirst = 20; }
-  if (preview === 'death' || preview === 'play' || preview === 'night' || preview === 'rain' || preview === 'heat' || preview === 'grazing' || preview === 'birth') {
+  if (preview === 'weather' || preview === 'death' || preview === 'play' || preview === 'night' || preview === 'rain' || preview === 'heat' || preview === 'grazing' || preview === 'birth') {
     const notice = document.createElement('div');
     notice.className = 'preview-notice'; notice.textContent = `Development preview: ${preview}`;
     document.body.append(notice);

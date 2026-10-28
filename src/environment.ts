@@ -15,6 +15,7 @@ export interface Environment {
   hour: number;
   daylight: number;
   rain: number;
+  cloudCover: number;
   temperature: number;
   rainfall: number;
   evaporation: number;
@@ -22,7 +23,7 @@ export interface Environment {
 export const environmentConfig: EnvironmentConfig = {
   daySeconds: 300, startHour: 8,
   minimumTemperature: 18, maximumTemperature: 35, rainCooling: 4,
-  clearSeconds: 80, rainSeconds: 40, transitionSeconds: 5,
+  clearSeconds: 80, rainSeconds: 40, transitionSeconds: 10,
   rainfallRate: 8, evaporationRate: 0.06,
 };
 const smooth = (x: number) => (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, x)))) / 2;
@@ -37,7 +38,14 @@ export function environmentAt(time: number, c: EnvironmentConfig): Environment {
   const totalHours = c.startHour + time / c.daySeconds * 24;
   const hour = ((totalHours % 24) + 24) % 24;
   const period = c.clearSeconds + c.rainSeconds;
-  const wetTime = ((time % period) + period) % period - c.clearSeconds;
+  const phase = ((time % period) + period) % period;
+  const wetTime = phase - c.clearSeconds;
+  // Clouds arrive before precipitation and linger after it. Short dry intervals
+  // divide evenly between clearing and build-up; continuous rain stays overcast.
+  const cloudTransition = Math.min(20, c.clearSeconds / 2);
+  const gathering = cloudTransition > 0 ? smooth((phase - c.clearSeconds + cloudTransition) / cloudTransition) : 1;
+  const clearing = time >= period && cloudTransition > 0 ? 1 - smooth(phase / cloudTransition) : 0;
+  const cloudCover = c.rainSeconds > 0 ? Math.max(gathering, clearing) : 0;
   const transition = Math.min(c.transitionSeconds, c.rainSeconds / 2);
   const rain = wetTime < 0 ? 0 : transition > 0
     ? smooth(Math.min(wetTime, c.rainSeconds - wetTime) / transition) : 1;
@@ -45,7 +53,7 @@ export function environmentAt(time: number, c: EnvironmentConfig): Environment {
   // Slow evaporation only from 11:00 to 17:00, peaking at 14:00; never during rain.
   const peakHeat = Math.abs(hour - 14) < 3 ? Math.cos((hour - 14) / 3 * Math.PI / 2) ** 2 : 0;
   return {
-    day: Math.floor(totalHours / 24) + 1, hour, daylight, rain,
+    day: Math.floor(totalHours / 24) + 1, hour, daylight, rain, cloudCover,
     temperature: clearTemperature(hour, c) - c.rainCooling * rain,
     rainfall: c.rainfallRate * rain,
     evaporation: rain > 0 ? 0 : c.evaporationRate * peakHeat,
