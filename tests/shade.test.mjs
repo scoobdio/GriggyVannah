@@ -33,7 +33,7 @@ test('urgent thirst interrupts shade when water exists; empty water allows cooli
  assert.equal(s.animal.behaviour,'Seeking water'); assert.equal(s.shadeId,null);
  tick(s,hot,15); assert.ok(s.cycles>0);
 });
-test('rain and night reduce heat without triggering shade seeking', () => {
+test('rain triggers shelter while night reduces heat without seeking heat shade', () => {
  for(const environment of [
   {...hot.environment,clearSeconds:0,rainSeconds:1000,transitionSeconds:0},
   {...hot.environment,startHour:2.5},
@@ -41,7 +41,9 @@ test('rain and night reduce heat without triggering shade seeking', () => {
   const c={...hot,environment}; const s=createSimulation(c);
   s.animal.heat=90; s.animal.thirst=20;
   tick(s,c,5);
-  assert.ok(s.animal.heat<90); assert.equal(s.shadeId,null);
+  assert.ok(s.animal.heat<90);
+  if(environment.clearSeconds===0) assert.ok(['Seeking shelter','Sheltering from rain'].includes(s.animal.behaviour));
+  else assert.equal(s.shadeId,null);
  }
 });
 test('unavailable or unsafe shade does not cause endless travel or block drinking', () => {

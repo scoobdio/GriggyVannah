@@ -72,7 +72,7 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
     shadow.scaling.set(scale,1,scale*1.4);
     root.position.set(s.animal.x,0,s.animal.z);
     const sleeping=s.animal.behaviour==='Sleeping';
-    const resting=sleeping || s.animal.behaviour==='Cooling in shade';
+    const resting=sleeping || s.animal.behaviour==='Sheltering from rain' || s.animal.behaviour==='Cooling in shade';
     body.position.y=resting?-0.28:walking?Math.abs(Math.sin(stride))*0.035:Math.sin(s.time*1.7+id)*0.008;
     if(walking && s.socialMode==='Playing' && s.animal.behaviour==='Roaming') body.position.y+=Math.abs(Math.sin(stride*0.8))*0.22;
     legs.forEach((leg,i)=>leg.rotation.x=resting?(i%2?0.7:-0.7):walking?Math.sin(stride+(i===0||i===3?0:Math.PI))*0.48:0);

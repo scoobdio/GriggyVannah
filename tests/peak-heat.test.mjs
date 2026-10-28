@@ -21,10 +21,10 @@ test('animal seeks shade early and stays sheltered for most of a short peak-hour
  stepSimulation(s,{...hot,environment:{...hot.environment,startHour:18}},1/60);
  assert.notEqual(s.animal.behaviour,'Cooling in shade');
 });
-test('urgent thirst interrupts peak shelter and rain ends comfortable sheltering',()=>{
+test('urgent thirst interrupts peak shelter and rain changes cooling into rain shelter',()=>{
  const s=createSimulation(hot);s.animal.thirst=10;tick(s,hot,35);
  s.animal.thirst=90;stepSimulation(s,hot,1/60);assert.equal(s.animal.behaviour,'Seeking water');
  const wet=createSimulation(hot);wet.animal.thirst=10;tick(wet,hot,35);
  stepSimulation(wet,{...hot,environment:{...hot.environment,clearSeconds:0,transitionSeconds:0}},1/60);
- assert.notEqual(wet.animal.behaviour,'Cooling in shade');
+ assert.equal(wet.animal.behaviour,'Sheltering from rain');
 });

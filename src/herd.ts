@@ -104,7 +104,7 @@ export function stepHerd(herd: Herd, c: SimulationConfig, dt: number) {
     const index = (first+offset)%herd.members.length, s = herd.members[index];
     s.companions = herd.members.filter((m,i)=>i!==index && distance(s.animal,m.animal)<=c.perception.radius)
       .map(m=>m.animal.behaviour === 'Seeking water' ? m.edge :
-        (m.animal.behaviour === 'Seeking grass' || m.animal.behaviour === 'Seeking shade') && m.travelRoute.length ? m.travelRoute[m.travelRoute.length-1] : m.animal);
+        (m.animal.behaviour === 'Seeking grass' || m.animal.behaviour === 'Seeking shade' || m.animal.behaviour === 'Seeking shelter') && m.travelRoute.length ? m.travelRoute[m.travelRoute.length-1] : m.animal);
     stepSimulation(s,c,dt,false);
     updateLife(s,c,dt);
   }
@@ -118,7 +118,7 @@ export function stepHerd(herd: Herd, c: SimulationConfig, dt: number) {
     });
     const target = {x:s.animal.x+push.x*dt*2,z:s.animal.z+push.z*dt*2};
     const next = s.animal.behaviour === 'Seeking water' ? s.waterRoute[0] : s.animal.behaviour.startsWith('Waiting') ? s.searchRoute[0] : s.travelRoute[0];
-    if (s.animal.behaviour === 'Sleeping' || s.animal.behaviour === 'Drinking' || s.animal.behaviour === 'Grazing' || s.animal.behaviour === 'Cooling in shade') return;
+    if (s.animal.behaviour === 'Sheltering from rain' || s.animal.behaviour === 'Sleeping' || s.animal.behaviour === 'Drinking' || s.animal.behaviour === 'Grazing' || s.animal.behaviour === 'Cooling in shade') return;
     if (insideGround(target,c) && clearRoute(s.animal,target,c) && (!next || clearRoute(target,next,c))) {
       s.animal.x=target.x;s.animal.z=target.z;
     }

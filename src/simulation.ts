@@ -34,7 +34,7 @@ export interface SimulationConfig {
   edgeOffset: number;
   retrySeconds: number;
 }
-export type Behaviour = 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
+export type Behaviour = 'Seeking shelter' | 'Sheltering from rain' | 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
   playTargetId:number|null;
   playRole: 'Leading' | 'Chasing' | null;
@@ -49,6 +49,8 @@ export interface Simulation {
   lastGroup: (Point & { seenAt:number }) | null;
   socialMode: 'Playing' | 'With herd' | 'Exploring' | 'Rejoining' | 'Searching for herd';
   searchRoute: Point[];
+  rainSheltering:boolean;
+  rainRecovery:boolean;
   nightRecovery: boolean;
   id: number;
   roamTarget: Point | null;
@@ -95,7 +97,7 @@ export function createSimulation(c: SimulationConfig): Simulation {
       pregnancy:null,fatherId:null,motherId:null,mateId:null,nextMateAt:0},
     waterMemory: {}, grassMemory: {}, shadeMemory: {}, nextObservation: 0,
     lastGroup: null, socialMode: 'With herd', searchRoute: [],
-    nightRecovery: false, id: 0, roamTarget: null, companions: [],
+    rainSheltering:false, rainRecovery:false, nightRecovery: false, id: 0, roamTarget: null, companions: [],
     animal: { ...c.home, thirst: 55, hunger: 40, heat: 20, behaviour: 'Resting' },
     ponds: c.ponds.map(p => ({ water: Math.max(0, Math.min(p.capacity, p.initialWater)) })),
     grass: c.grass.map(p => ({ food: p.capacity, moisture: 0.65 })),
@@ -343,6 +345,44 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
   a.heat = Math.max(0, Math.min(100, a.heat + heatChange * dt));
   const night = s.environment.hour >= c.sleep.startHour || s.environment.hour < c.sleep.endHour;
   const urgentNeed = a.thirst >= c.sleep.urgentNeed || a.hunger >= c.sleep.urgentNeed;
+  // Separate start/stop thresholds prevent shuffling during light drizzle.
+  if(s.environment.rain>=0.2) s.rainSheltering=true;
+  else if(s.environment.rain<=0.05) s.rainSheltering=false;
+  if(!s.rainSheltering) s.rainRecovery=false;
+  else if(urgentNeed) s.rainRecovery=true;
+  const recoveringFromRain=['Seeking water','Drinking','Waiting for water','Seeking grass','Grazing','Waiting for grass'].includes(a.behaviour);
+  if(s.rainRecovery && !urgentNeed && !recoveringFromRain && a.thirst<c.seekThreshold && a.hunger<c.hunger.seek)
+    s.rainRecovery=false;
+  const rainBehaviour=a.behaviour==='Seeking shelter' || a.behaviour==='Sheltering from rain';
+  if(rainBehaviour && (!s.rainSheltering || s.rainRecovery)) {
+    a.behaviour='Resting';s.travelRoute=[];s.shadeId=null;
+  }
+  if(s.rainSheltering && !s.rainRecovery) {
+    const covered=c.shades.some(shade=>shade.accessible && distance(a,shade)<=shade.radius);
+    if(covered && (a.behaviour!=='Seeking shelter' || !s.travelRoute.length)) {
+      a.behaviour=night?'Sleeping':'Sheltering from rain';
+      s.travelRoute=[];s.waterRoute=[];s.searchRoute=[];s.playRole=null;s.playTargetId=null;
+      return;
+    }
+    const shelter=c.shades.find(item=>item.id===s.shadeId && item.accessible);
+    if(a.behaviour==='Seeking shelter' && shelter && s.travelRoute.length) {
+      const arrived=followRoute(s,s.travelRoute,c,dt);
+      a.behaviour=arrived?(night?'Sleeping':'Sheltering from rain'):'Seeking shelter';
+      return;
+    }
+    if(s.time>=s.shadeRetryAt) {
+      s.shadeRetryAt=s.time+c.retrySeconds;
+      const shelter=chooseShade(s,c);
+      if(shelter) {
+        s.shadeId=shelter.id;a.behaviour='Seeking shelter';s.waterRoute=[];s.searchRoute=[];
+        s.playRole=null;s.playTargetId=null;return;
+      }
+    }
+    // No known safe canopy: continue normal activities and retry without getting stuck.
+    if(a.behaviour==='Seeking shelter' || a.behaviour==='Sheltering from rain') {
+      a.behaviour='Resting';s.travelRoute=[];s.shadeId=null;
+    }
+  }
   if (!night) {
     s.nightRecovery = false;
     if (sleeping) { a.behaviour = 'Resting'; s.travelRoute = []; }
