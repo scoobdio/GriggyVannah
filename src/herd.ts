@@ -1,3 +1,5 @@
+import { chooseSleepCamp, assignSleepSpots } from './sleep.ts';
+import type { SleepCamp } from './sleep.ts';
 import { environmentAt } from './environment.ts';
 import { updateLife, createCarcass } from './lifecycle.ts';
 import type { Carcass } from './lifecycle.ts';
@@ -6,7 +8,7 @@ import { createSimulation, updateWorldResources, stepSimulation, planRoute, clea
 import type { Simulation, SimulationConfig, Point } from './simulation.ts';
 
 export const herdConfig = { count: 7, groupRadius: 5, soloSeconds: 20, socialPeriod: 160, rethinkSeconds: 4, playRethinkSeconds: 0.5 };
-export interface Herd { world:Simulation; carcasses:Carcass[]; deaths:number; members: Simulation[]; solo: boolean[]; nextSocialAt: number; tick: number; nextId:number; births:number; nextBreedingAt:number }
+export interface Herd { sleepCamp:SleepCamp|null; world:Simulation; carcasses:Carcass[]; deaths:number; members: Simulation[]; solo: boolean[]; nextSocialAt: number; tick: number; nextId:number; births:number; nextBreedingAt:number }
 export function createHerd(c: SimulationConfig, count = herdConfig.count): Herd {
   const members = Array.from({length:count},(_,id) => {
     const s = createSimulation(c); s.id = id;s.life.sex=id%2===0?'female':'male';
@@ -17,7 +19,7 @@ export function createHerd(c: SimulationConfig, count = herdConfig.count): Herd 
   });
   const world=createSimulation(c);
   for (const member of members) { member.ponds = world.ponds; member.grass = world.grass; }
-  return {world,carcasses:[],deaths:0,members,solo:members.map(()=>false),nextSocialAt:0,tick:0,nextId:count,births:0,nextBreedingAt:1};
+  return {sleepCamp:null,world,carcasses:[],deaths:0,members,solo:members.map(()=>false),nextSocialAt:0,tick:0,nextId:count,births:0,nextBreedingAt:1};
 }
 function canPlay(s:Simulation,c:SimulationConfig) {
   return !isAdult(s,c) && s.health>=60 &&
@@ -96,6 +98,15 @@ export function stepHerd(herd: Herd, c: SimulationConfig, dt: number) {
   if (herd.world.time >= herd.nextSocialAt) {
     updateSocialTargets(herd,c);
     herd.nextSocialAt = herd.world.time + (herd.members.some(s=>s.playRole)?herdConfig.playRethinkSeconds:herdConfig.rethinkSeconds);
+  }
+  const hour=herd.world.environment.hour;
+  const bedtime=hour>=c.sleep.startHour || hour<c.sleep.endHour;
+  if(bedtime && herd.members.length) {
+    herd.sleepCamp??=chooseSleepCamp(herd.members,c);
+    if(herd.members.some(s=>!s.sleepTarget)) assignSleepSpots(herd.members,c,herd.sleepCamp);
+    herd.solo.fill(false);
+  } else if(!bedtime) {
+    herd.sleepCamp=null;herd.members.forEach(s=>s.sleepTarget=null);
   }
   const positions = herd.members.map(s=>({x:s.animal.x,z:s.animal.z}));
   // Rotate first access to shared stocks; weather advances exactly once per world tick.

@@ -29,9 +29,10 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
   const head=new TransformNode(`herbivore-${id}-head-pivot`,scene);head.parent=body;head.position.set(0,1.6,0.61);
   ellipsoid('head',head,0,0,0.12,0.38,0.4,0.65);
   ellipsoid('muzzle',head,0,-0.09,0.39,0.28,0.23,0.22,dark);
+  const eyes:ReturnType<typeof ellipsoid>[]=[];
   for(const side of [-1,1]) {
     const ear=ellipsoid(`ear-${side}`,head,side*0.25,0.16,-0.04,0.17,0.34,0.12);ear.rotation.z=-side*0.65;
-    ellipsoid(`eye-${side}`,head,side*0.185,0.04,0.2,0.055,0.06,0.055,dark);
+    eyes.push(ellipsoid(`eye-${side}`,head,side*0.185,0.04,0.2,0.055,0.06,0.055,dark));
     const horn=CreateCylinder(`herbivore-${id}-horn-${side}`,{height:0.36,diameterBottom:0.075,diameterTop:0.018,tessellation:5},scene);
     horn.parent=head;horn.position.set(side*0.11,0.34,-0.09);horn.rotation.x=-0.23;horn.material=dark;
   }
@@ -46,7 +47,7 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
   shadow.scaling.z=1.4;
   root.getChildMeshes().forEach(mesh=>{mesh.metadata={animalId:id};});
   let highlighted=false;
-  let lastTime=-1,stride=id*1.9;
+  let lastTime=-1,stride=id*1.9,settle=0;
   return { root,head,
     select(selected:boolean) { if(selected===highlighted) return; highlighted=selected;coat.emissiveColor.set(selected?0.18:0,selected?0.13:0,selected?0.035:0); },
     dispose() { root.dispose();shadow.material?.dispose();shadow.dispose();coat.dispose();dark.dispose();cream.dispose(); },
@@ -73,16 +74,25 @@ export function createHerbivore(scene: Scene, id: number, shadowTexture: Dynamic
     root.position.set(s.animal.x,0,s.animal.z);
     const sleeping=s.animal.behaviour==='Sleeping';
     const resting=sleeping || s.animal.behaviour==='Sheltering from rain' || s.animal.behaviour==='Cooling in shade';
-    body.position.y=resting?-0.28:walking?Math.abs(Math.sin(stride))*0.035:Math.sin(s.time*1.7+id)*0.008;
+    settle+=(Number(sleeping)-settle)*(1-Math.exp(-dt*1.8));
+    const breath=Math.sin(s.time*1.4+id*1.9)*settle;
+    eyes.forEach(eye=>eye.scaling.y=0.06*(1-settle*0.85));
+    body.scaling.y=1+breath*0.018;
+    body.rotation.z=settle*0.07;
+    body.position.y=settle*(-0.36+breath*0.012)+(1-settle)*(resting?-0.28:walking?Math.abs(Math.sin(stride))*0.035:Math.sin(s.time*1.7+id)*0.008);
     if(walking && s.socialMode==='Playing' && s.animal.behaviour==='Roaming') body.position.y+=Math.abs(Math.sin(stride*0.8))*0.22;
-    legs.forEach((leg,i)=>leg.rotation.x=resting?(i%2?0.7:-0.7):walking?Math.sin(stride+(i===0||i===3?0:Math.PI))*0.48:0);
+    legs.forEach((leg,i)=>{
+      const target=resting?(i%2?0.95:-0.95):walking?Math.sin(stride+(i===0||i===3?0:Math.PI))*0.48:0;
+      leg.rotation.x+=(target-leg.rotation.x)*Math.min(1,dt*(sleeping?2:9));
+    });
+    head.rotation.y=settle*0.55;
     const feeding=s.animal.behaviour==='Grazing'||s.animal.behaviour==='Drinking';
     const blend=Math.min(1,dt*7);
-    head.position.y+=((feeding?0.58:sleeping?1.15:1.6)-head.position.y)*blend;
+    head.position.y+=((feeding?0.58:sleeping?0.95:1.6)-head.position.y)*blend;
     head.position.z+=((feeding?1.03:0.61)-head.position.z)*blend;
     neck.rotation.x+=((feeding?0.85:-0.3)-neck.rotation.x)*blend;
     neck.position.y+=((feeding?1.0:1.28)-neck.position.y)*blend;
-    const headTarget=sleeping?0.3:feeding?0.95+Math.sin(s.time*4+id)*0.045:Math.sin(s.time*0.8+id)*0.035;
+    const headTarget=sleeping?0.45+breath*0.025:feeding?0.95+Math.sin(s.time*4+id)*0.045:Math.sin(s.time*0.8+id)*0.035;
     head.rotation.x+=(headTarget-head.rotation.x)*Math.min(1,dt*7);
     tail.rotation.z=sleeping?0:Math.sin(s.time*2.1+id)*0.16;
     shadow.position.x=s.animal.x;shadow.position.z=s.animal.z;shadow.rotation.y=root.rotation.y;

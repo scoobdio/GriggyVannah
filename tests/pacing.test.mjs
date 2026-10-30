@@ -15,7 +15,7 @@ test('grazing lasts tens of seconds while drinking remains quicker',()=>{
  tick(w,c,3);assert.equal(w.animal.behaviour,'Drinking');tick(w,c,5);assert.equal(w.cycles,1);
 });
 test('herd sleeps still at night with reduced needs and wakes at dawn',()=>{
- const h=createHerd(night);stepHerd(h,night,1/60);const positions=h.members.map(s=>({...s.animal}));
+ const h=createHerd(night);for(let i=0;i<30*60;i++)stepHerd(h,night,1/60);const positions=h.members.map(s=>({...s.animal}));
  for(let i=0;i<600;i++)stepHerd(h,night,1/60);
  h.members.forEach((s,i)=>{assert.equal(s.animal.behaviour,'Sleeping');assert.equal(s.animal.x,positions[i].x);assert.equal(s.animal.z,positions[i].z);assert.ok(s.animal.thirst-positions[i].thirst<0.71);});
  const dawn={...night,environment:{...night.environment,startHour:6}};

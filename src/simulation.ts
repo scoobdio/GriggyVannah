@@ -34,8 +34,9 @@ export interface SimulationConfig {
   edgeOffset: number;
   retrySeconds: number;
 }
-export type Behaviour = 'Seeking shelter' | 'Sheltering from rain' | 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
+export type Behaviour = 'Gathering to sleep' | 'Seeking shelter' | 'Sheltering from rain' | 'Sleeping' | 'Seeking grass' | 'Grazing' | 'Waiting for grass' | 'Roaming' | 'Resting' | 'Seeking water' | 'Drinking' | 'Waiting for water' | 'Returning' | 'Seeking shade' | 'Cooling in shade';
 export interface Simulation {
+  sleepTarget:Point|null;
   playTargetId:number|null;
   playRole: 'Leading' | 'Chasing' | null;
   health: number;
@@ -91,6 +92,7 @@ export const simulationConfig: SimulationConfig = {
 export const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
 export function createSimulation(c: SimulationConfig): Simulation {
   const state: Simulation = {
+    sleepTarget:null,
     playTargetId:null, playRole:null,
     health:100, deprivation:{thirst:0,hunger:0,heat:0},
     life: {sex:'female',age:c.reproduction.maturityDays*c.environment.daySeconds,
@@ -357,7 +359,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
   if(rainBehaviour && (!s.rainSheltering || s.rainRecovery)) {
     a.behaviour='Resting';s.travelRoute=[];s.shadeId=null;
   }
-  if(s.rainSheltering && !s.rainRecovery) {
+  if(s.rainSheltering && !s.rainRecovery && !(night && s.sleepTarget)) {
     const covered=c.shades.some(shade=>shade.accessible && distance(a,shade)<=shade.radius);
     if(covered && (a.behaviour!=='Seeking shelter' || !s.travelRoute.length)) {
       a.behaviour=night?'Sleeping':'Sheltering from rain';
@@ -385,7 +387,7 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
   }
   if (!night) {
     s.nightRecovery = false;
-    if (sleeping) { a.behaviour = 'Resting'; s.travelRoute = []; }
+    if (sleeping || a.behaviour==='Gathering to sleep') { a.behaviour = 'Resting'; s.travelRoute = []; }
   } else {
     if (urgentNeed) s.nightRecovery = true;
     // Finish the current recovery bout before settling again: no sleep/wake oscillation.
@@ -393,10 +395,21 @@ export function stepSimulation(s: Simulation, c: SimulationConfig, dt: number, u
     if (s.nightRecovery && !urgentNeed && !recovering && a.thirst < c.seekThreshold && a.hunger < c.hunger.seek)
       s.nightRecovery = false;
     if (!s.nightRecovery && a.heat < c.heat.seek) {
+      s.playRole=null;s.playTargetId=null;s.waterRoute=[];s.searchRoute=[];s.shadeId=null;
+      if(s.sleepTarget && distance(a,s.sleepTarget)>0.05) {
+        if(a.behaviour!=='Gathering to sleep' || !s.travelRoute.length) {
+          const route=planRoute(a,s.sleepTarget,c);
+          if(!route) s.sleepTarget={x:a.x,z:a.z};
+          s.travelRoute=route??[];
+        }
+        if(s.travelRoute.length && !followRoute(s,s.travelRoute,c,dt)) {
+          a.behaviour='Gathering to sleep';return;
+        }
+      }
       a.behaviour = 'Sleeping'; s.travelRoute = []; s.waterRoute = []; s.shadeId = null;
       return;
     }
-    if (sleeping) { a.behaviour = 'Resting'; s.travelRoute = []; }
+    if (sleeping || a.behaviour==='Gathering to sleep') { a.behaviour = 'Resting'; s.travelRoute = []; }
   }
   const wantsWater = a.thirst >= c.seekThreshold && c.ponds.some((_,i) => knownStock(s,c,i,'water') >= 5);
   const urgentWater = a.thirst >= c.heat.urgentThirst && wantsWater;
